@@ -6,8 +6,9 @@ import datetime
 import enum
 import functools
 import inspect
+import typing
 from inspect import isclass
-from typing import AsyncIterator, Any, Dict, List, Literal, Mapping, Optional, Callable, Sequence, Type, Tuple, Union
+from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Sequence, Type, Tuple, Union
 
 import pydantic
 
@@ -24,15 +25,19 @@ __all__ = [
     "exit_state"
 ]
 
-
-class StateEnum(str, enum.Enum):
+# class StateEnum(str, enum.Enum):
+class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
     
     State enumerations are interpreted as describing states where the `name` attribute defines the unique, 
     symbolic name of the state within the state machine while the `value` attribute defines the human readable 
     description.
     """
-    pass
+    @classmethod
+    # TODO: as_states() ???
+    def to_states(cls) -> List['State']:
+        """Return a list of `State` objects for each item in the enumeration."""
+        return State.from_enum(cls)
 
 
 class Action(pydantic.BaseModel):
@@ -118,14 +123,14 @@ class State(BaseModel):
     description: Optional[str] = None
     
     @classmethod
-    def list_from(self, descriptor: Union[StateEnum]) -> List['State']:
-        """Return a list of State objects from a descriptor."""
+    def from_enum(cls, class_: Type[StateEnum]) -> List['State']:
+        """Return a list of State objects from a state enum subclass."""
         states = []
-        if issubclass(descriptor, StateEnum):
-            for desc in descriptor:
-                states.append(State(name=desc.name, description=desc.value))
+        if isclass(class_) and issubclass(class_, StateEnum):
+            for item in class_:
+                states.append(cls(name=item.name, description=item.value))
         else:
-            raise ValueError(f"unknown descriptor of type \"{descriptor.__class__}\": {descriptor}")
+            raise TypeError(f"invalid parameter: \"{class_.__class__.__name__}\" is not a StateEnum subclass: {class_}")
         
         return states
 
@@ -255,32 +260,75 @@ class StateMachine(pydantic.BaseModel):
             state post-initialization.
     # TODO: add a note about using enter_state if you need args and init not calling entry callbacks
     """
+    # __state__: ClassVar[Optional[StateEnum]] = None
+    __state__: Optional[StateEnum] = None
+    
     _state: Optional[State] = pydantic.PrivateAttr(None)
     _states: List[State] = pydantic.PrivateAttr([])
     _events: List[Event] = pydantic.PrivateAttr([])
     
     def __init__(self, states: List[State] = [], events: List[Event] = [], state: Optional[Union[State, str, StateEnum]] = None) -> None:
         super().__init__()
-        if states:
-            self._states = states
-        if events:
-            self._events = events
         
+        # Initialize private attributes
+        if states:
+            self._states.extend(states)
+                    
+        if events:
+            self._events.extend(events)
+            
+        # Handle embedded States class
+        state_enum = getattr(self.__class__, "States", None)
+        if state_enum:
+            if not issubclass(state_enum, StateEnum):
+                raise TypeError("States class must be a subclass of StateEnum")
+            self._states.extend(State.from_enum(state_enum))
+        
+        # Handle type hints from __state__
+        if not state_enum:
+            type_hints = typing.get_type_hints(self.__class__)
+            state_hint = type_hints["__state__"]
+            if isclass(state_hint) and issubclass(state_hint, StateEnum):
+                self._states.extend(State.from_enum(state_hint))
+            else:
+                # Introspect the type hint
+                type_origin = typing.get_origin(state_hint)
+                if type_origin is typing.Union:
+                    args = typing.get_args(state_hint)
+
+                    for arg in args:
+                        if isclass(arg) and issubclass(arg, StateEnum):
+                            self._states.extend(State.from_enum(arg))
+                else:
+                    # TODO: Handle other reasonable hints
+                    raise TypeError(f"unsupported type hint: \"{state_hint}\"")
+        
+        # Initial state
         if isinstance(state, State):
             if state not in self._states:
                 raise ValueError(f"invalid initial state: the state object given is not in the state machine")
             self._state = state
+        
         elif isinstance(state, (StateEnum, str)):            
             state_ = self.get_state(state)
             if not state_:
                 raise LookupError(f"invalid initial state: no state was found with the name \"{state}\"")
             self._state = state_
+        
         elif state is None:
-            pass
+            # Assign from __state__ attribute if defined
+            if initial_state := getattr(self.__class__, "__state__", None):
+                state_ = self.get_state(initial_state)
+                if not state_:
+                    raise LookupError(f"invalid initial state: no state was found with the name \"{initial_state}\"")
+                debug("we are here", self, state_)
+                self._state = state_
+                
         else:
             raise TypeError(f"invalid initial state: unexpected value of type \"{state.__class__.__name__}\": {state}")
         
         # Initialize any decorated methods
+        debug("fields", self.__class__.__fields__)
         for name, method in self.__class__.__dict__.items():
             # debug("checking", name, method)
             # if inspect.ismethod(method):
@@ -290,7 +338,7 @@ class StateMachine(pydantic.BaseModel):
                 if not target:
                     # TODO: Test
                     raise ValueError("adas")
-                debug("Got target: ", target)
+                debug(f"Got target from {descriptor.target}", target)
                 event = Event(
                     name=method.__name__,
                     description=descriptor.description,
@@ -301,6 +349,36 @@ class StateMachine(pydantic.BaseModel):
                     after=descriptor.after,
                 )
                 self.add_event(event)
+    
+    # @pydantic.validator("_states", check_fields=False)
+    # def _add_states_from_nested_enum(cls, value: List[State]) -> List[State]:
+    #     debug(value)
+    #     debug(getattr(cls, "States", None))
+    #     if state_enum := getattr(cls, "States", None):
+    #         assert issubclass(state_enum, StateEnum), "States class must be a subclass of StateEnum"
+    #         value.extend(State.from_enum(state_enum))
+        
+    #     return value
+    
+    # @pydantic.root_validator()
+    # def _map_declarative_states(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    #     debug("DECLARATIVE ", values, cls._states)
+    #     import typing
+    #     type_hints = typing.get_type_hints(cls)
+    #     debug(type_hints)
+    #     state_enum = type_hints["__state__"]
+    #     debug(state_enum)
+    #     if state_enum is not StateEnum:
+    #         debug("adding states")
+    #         values['_states'] = State.from_enum(state_enum)
+    #         # del values['states']
+        
+    #     debug("new values", values, cls.__fields__)
+    #     return values
+    
+    # @pydantic.validator("_state")
+    # @classmethod
+    # def _map_declarative_state(cls, value) -> Dict[str, Any]:
         
     
     @property
@@ -333,7 +411,6 @@ class StateMachine(pydantic.BaseModel):
     def get_state(self, name: Union[str, StateEnum]) -> Optional[State]:
         """Retrieve a list of states in the state machine by name."""
         name_ = name.name if isinstance(name, StateEnum) else name
-        debug(name, name_)
         return next(filter(lambda s: s.name == name_, self.states), None)
     
     def get_states(self, *names: List[Union[str, StateEnum]]) -> List[State]:
@@ -342,7 +419,7 @@ class StateMachine(pydantic.BaseModel):
         for name in names:
             if isclass(name) and issubclass(name, StateEnum):
                 names_.extend(list(map(lambda i: i.name, name)))
-            elif isinstance(name, str):
+            elif isinstance(name, (StateEnum, str)):
                 name_ = name.name if isinstance(name, StateEnum) else name
                 names_.append(name_)
             else:
@@ -671,7 +748,7 @@ class ActionDescriptor(pydantic.BaseModel):
     
 # TODO: Make ... an alias for "any"?
 # TODO: Allow passing in `None` literal for sources?
-# TODO: Internal transition: to is blank, doesn't change
+# TODO: Internal transition: target is blank, doesn't change
 # TODO: A default action without specifying source or target will create a universal internal action for whatever state
 def event(
     description: Optional[str] = None, 
@@ -685,7 +762,6 @@ def event(
 ) -> None:
     """Transform a method into a state machine event."""      
     def decorator(fn):
-        # TODO: need a collection version of this...
         target_ = target.name if isinstance(target, StateEnum) else target
         debug(source, target, target_)
         descriptor = EventDescriptor(
@@ -732,16 +808,6 @@ def event(
         return fn
 
     return decorator
-        
-        
-    #     name: str
-    # description: Optional[str] = None    
-    # from_states: List[State]
-    # to_state: State
-    # callable: Optional[Callable] = None
-    # _signature: Optional[inspect.Signature] = pydantic.PrivateAttr(None)
-        
-    ...
 
 def on_state() -> None:
     """Transform a method into a state transition action."""

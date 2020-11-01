@@ -9,6 +9,8 @@ import statesman
 
 import devtools
 
+from statesman import StateEnum
+
 builtins.debug = devtools.debug
 
 pytestmark = pytest.mark.asyncio
@@ -104,10 +106,10 @@ class TestState:
     
     class TestListFrom:
         def test_enum(self) -> None:
-            states = statesman.State.list_from(States)
+            states = statesman.State.from_enum(States)
             assert states
             assert len(states) == 4
-            assert (states[0].name, states[0].description) == ("starting", "Starting...")
+            assert (states[0].name, states[0].description) == ("starting", "Starting")
 
 class TestAction:
     def test_callable_is_required(self) -> None:
@@ -157,7 +159,7 @@ class States(statesman.StateEnum):
 class TestStateMachine:
     @pytest.fixture
     def state_machine(self) -> statesman.StateMachine:
-        return statesman.StateMachine(states=statesman.State.list_from(States))
+        return statesman.StateMachine(states=statesman.State.from_enum(States))
     
     async def test_get_states_names(self, state_machine: statesman.StateMachine) -> None:
         states = state_machine.get_states("starting", "stopped")
@@ -178,7 +180,7 @@ class TestTransition:
     @pytest.fixture
     def transition(self) -> statesman.Transition:
         state_machine = statesman.StateMachine()
-        state_machine.add_states(statesman.State.list_from(States))
+        state_machine.add_states(statesman.State.from_enum(States))
         starting = state_machine.get_state(States.starting)
         stopping = state_machine.get_state(States.stopping)
         
@@ -254,7 +256,7 @@ class TestProgrammaticStateMachine:
     
     def test_add_states(self) -> None:
         state_machine = statesman.StateMachine()
-        state_machine.add_states(statesman.State.list_from(States))
+        state_machine.add_states(statesman.State.from_enum(States))
         assert len(state_machine.states) == 4
         state = state_machine.states[0]
         assert state.name == States.starting.name
@@ -274,18 +276,18 @@ class TestProgrammaticStateMachine:
         assert len(state_machine.states) == 2
         state1, state2 = state_machine.states
         assert state1.name == "starting"
-        assert state1.description == "Starting..."
+        assert state1.description == "Starting"
         assert state2.name == "stopping"
         assert state2.description is None # we didn't pass description
     
     def test_enter_states_via_initializer(self) -> None:
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States))
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
         assert len(state_machine.states) == 4
         state = state_machine.states[0]
         assert state == States.starting
     
     async def test_enter_state_name_not_found(self) -> None:
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States))
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
         assert state_machine.state == None
         with pytest.raises(LookupError, match='state entry failed: no state was found with the name "invalid"'):
             await state_machine.enter_state("invalid")
@@ -294,21 +296,21 @@ class TestProgrammaticStateMachine:
         class OtherStates(statesman.StateEnum):
             invalid = "invalid"
             
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States))
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
         assert state_machine.state == None
         with pytest.raises(LookupError, match='state entry failed: no state was found with the name "invalid"'):
             await state_machine.enter_state(OtherStates.invalid)
         
     async def test_enter_state_not_in_machine(self) -> None:
         state = statesman.State("invalid")
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States))
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
         assert state_machine.state == None
         with pytest.raises(ValueError, match='state entry failed: the state object given is not in the state machine'):
             await state_machine.enter_state(state)
     
     async def test_enter_state_runs_state_actions(self, mocker) -> None:
         state_machine = statesman.StateMachine()
-        state_machine.add_states(statesman.State.list_from(States))
+        state_machine.add_states(statesman.State.from_enum(States))
         starting = state_machine.get_state(States.starting)
         stopping = state_machine.get_state(States.stopping)
         
@@ -338,7 +340,7 @@ class TestProgrammaticStateMachine:
         ],
     )
     async def test_enter_state_with_args(self, callback, mocker) -> None:
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States), state=States.starting)
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
         assert state_machine.state == States.starting
         
         with extra(state_machine):
@@ -351,7 +353,7 @@ class TestProgrammaticStateMachine:
             assert callback_mock.call_args.kwargs == { "foo": "bar" }
     
     async def test_doesnt_run_on_callbacks_for_internal_transitions(self, mocker) -> None:
-        state_machine = statesman.StateMachine(states=statesman.State.list_from(States), state=States.starting)
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
         assert state_machine.state == States.starting
         
         # NOTE: we are already in Starting and entering it again
@@ -543,16 +545,75 @@ class TestProgrammaticStateMachine:
                     assert after_transition.call_count == 2
 
 class TestDecoratorStateMachine:
-    class States(statesman.StateEnum):
+    class ProcessStates(statesman.StateEnum):
         starting = "Starting..."
         running = "Running..."
         stopping = "Stopping..."
         stopped = "Terminated."
+    
+    def test_set_states_declaratively(self) -> None:
+        class TestMachine(statesman.StateMachine):
+            __state__: TestDecoratorStateMachine.ProcessStates = TestDecoratorStateMachine.ProcessStates.stopping
+        
+        state_machine = TestMachine()
+        assert len(state_machine.states) == 4
+        assert state_machine.states[0] == States.starting
+        assert isinstance(state_machine.state, statesman.State)
+        assert state_machine.state == TestDecoratorStateMachine.ProcessStates.stopping
+    
+    def test_set_initial_state_declaratively(self) -> None:
+        class TestMachine(statesman.StateMachine):
+            __state__: States = States.stopping
+        
+        state_machine = TestMachine()
+        assert state_machine.state == States.stopping
+    
+    def test_set_initial_state_declaratively_optional(self) -> None:
+        class TestMachine(statesman.StateMachine):
+            __state__: Optional[States] = None
+        
+        state_machine = TestMachine()
+        assert state_machine.state is None
+    
+    def test_set_states_embedded_enum(self) -> None:
+        class TestMachine(statesman.StateMachine):
+            class States(statesman.StateEnum):
+                one = "One"
+                two = "Two"
+                three = "Three"
+                four = "Four"
+        
+        state_machine = TestMachine()
+        assert state_machine.state is None
+        assert len(state_machine.states) == 4
+        assert state_machine.states[0] == TestMachine.States.one
+        assert state_machine.state is None
+        
+    def test_overrides(self):        
+        class TestMachine(statesman.StateMachine):
+            _state: Optional[States] = States.stopping
+            _initial = pydantic.PrivateAttr(States.starting)
+            _state_enum: Optional[States] = States.starting
+            foo = 1234
+        
+        state_machine = TestMachine()
+        debug(state_machine, state_machine._state, state_machine._initial, state_machine._state_enum, TestMachine.states, state_machine.states)
 
     # @statesman.machine(name="Process Lifecycle State Machine", states=States, initial_state=States.starting)
     class ProcessLifecycle(statesman.StateMachine):
-        states = States
-        # TODO: Support setting initial state?
+        class States(statesman.StateEnum):
+            starting = "Starting..."
+            running = "Running..."
+            stopping = "Stopping..."
+            stopped = "Terminated."
+        
+        # _states = States.to_states()
+        # _initial = States.starting
+        _state: States = States.starting # TODO: Find the field and update its signature
+        
+        # TODO: Can I infer the states if you just give initial?
+        # states: States
+        # initial: Optional[States] = States.starting
         
         # initial state entry point
         @statesman.event("Start a Process", None, States.starting)
@@ -576,13 +637,14 @@ class TestDecoratorStateMachine:
     
     @pytest.fixture
     def state_machine(self) -> statesman.StateMachine:
+        # TODO: This should be declarative
         return TestDecoratorStateMachine.ProcessLifecycle()
         
     async def test_states_added(self, state_machine: statesman.StateMachine) -> None:
         event = state_machine.get_event("start")
         assert event
         assert event.description == "Start a Process"
-        assert event.sources == None
+        assert event.sources == [None]
         assert event.target == States.starting
     
     async def test_events_added(self) -> None:
