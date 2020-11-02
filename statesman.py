@@ -324,13 +324,12 @@ class StateMachine(pydantic.BaseModel):
         # Initialize any decorated methods
         for name, method in self.__class__.__dict__.items():
             if descriptor := getattr(method, "__event_descriptor__", None):
-                debug("found descriptor ", descriptor, method, method.__name__)
                 target = self.get_state(descriptor.target)
                 if not target:
                     raise ValueError(f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
                 
                 source_names = list(filter(lambda s: s is not None, descriptor.source))
-                sources = self.get_states(*source_names) #if isinstance(descriptor.source, list) else descriptor.source
+                sources = self.get_states(*source_names)
                 if None in descriptor.source:
                     sources.append(None)
 
@@ -353,6 +352,23 @@ class StateMachine(pydantic.BaseModel):
                             type_
                         )
                         self.add_event(event)
+            elif descriptor := getattr(method, "__action_descriptor__", None):
+                if descriptor.model == State:
+                    obj = self.get_state(descriptor.name)
+                    if not obj:
+                        raise LookupError(f"unknown state: \"{descriptor.name}\"")
+                elif descriptor.model == Event:
+                    obj = self.get_event(descriptor.name)
+                    if not obj:
+                        raise LookupError(f"unknown event: \"{descriptor.name}\"")
+                else:
+                    raise TypeError(f"unknown model type: {descriptor.model.__name__}")
+                
+                # Create a bound method and attach the action
+                obj.add_action(
+                    types.MethodType(descriptor.callable, self), 
+                    descriptor.type
+                )
     
     @property
     def state(self) -> Optional[State]:
@@ -429,6 +445,10 @@ class StateMachine(pydantic.BaseModel):
     # TODO: cannot add an event to the machine that references an unknown state
     # TODO: when adding/removing a state or event, remove all the transitions it is referenced in
     # TODO: check that state and event aren't already in the state machine
+    # _states = States.to_states()
+    # _initial = States.starting
+    # __state__ = States.starting
+    # _state: States = States.starting # TODO: Find the field and update its signature
     
     async def trigger(self, event: Union[Event, str], *args, **kwargs) -> bool:
         """Trigger a state transition event.
@@ -715,10 +735,10 @@ class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
     source: List[Union[None, StateIdentifier]]
     target: Target
-    guard: List[Callable] #Union[None, Callable, List[Callable]]
-    before: List[Callable] #Union[None, Callable, List[Callable]]
+    guard: List[Callable]
+    before: List[Callable]
     on: List[Callable]
-    after: List[Callable] #Union[None, Callable, List[Callable]]
+    after: List[Callable]
     
     @pydantic.validator("source", pre=True)
     @classmethod
@@ -754,7 +774,11 @@ class EventDescriptor(pydantic.BaseModel):
         return callables
 
 class ActionDescriptor(pydantic.BaseModel):
-    ...
+    model: Type[BaseModel]
+    name: str
+    description: Optional[str] = None
+    type: Action.Types
+    callable: Callable
     
 # TODO: Make ... an alias for "any"?
 # TODO: Internal transition: target is blank, doesn't change
@@ -791,30 +815,57 @@ def event(
         return event_trigger
 
     return decorator
-
-def on_state() -> None:
-    """Transform a method into a state transition action."""
-    ...
     
-def enter_state() -> None:
+def enter_state(name: Union[str, StateEnum], description: str = "") -> None:
     """Transform a method into an enter state action."""
-    ...
+    return _state_action(name, Action.Types.entry, description)
 
-def exit_state() -> None:
+def exit_state(name: Union[str, StateEnum], description: str = "") -> None:
     """Transform a method into an exit state action."""
-    ...
+    return _state_action(name, Action.Types.exit, description)
 
-def guard_event() -> None:
+def _state_action(name: Union[str, StateEnum], type_: Action.Types, description: str = ""):
+    def decorator(fn):
+        name_ = name.name if isinstance(name, StateEnum) else name
+        descriptor = ActionDescriptor(
+            model=State,
+            name=name_,
+            description=description,
+            type=type_,
+            callable=fn
+        )
+        
+        fn.__action_descriptor__ = descriptor
+        return fn
+
+    return decorator
+
+def guard_event(name: str, description: str = "") -> None:
     """Transform a method into a before event action."""
-    ...
+    return _event_action(name, Action.Types.guard, description)
     
-def before_event() -> None:
+def before_event(name: str, description: str = "") -> None:
     """Transform a method into a before event action."""
-    ...
+    return _event_action(name, Action.Types.before, description)
 
-def after_event() -> None:
+def after_event(name: str, description: str = "") -> None:
     """Transform a method into an after event action."""
-    ...
+    return _event_action(name, Action.Types.after, description)
+
+def _event_action(name: str, type_: Action.Types, description: str = ""):
+    def decorator(fn):
+        descriptor = ActionDescriptor(
+            model=Event,
+            name=name,
+            description=description,
+            type=type_,
+            callable=fn
+        )
+        
+        fn.__action_descriptor__ = descriptor
+        return fn
+
+    return decorator
 
 def _summarize(
     values: Sequence[str], *, conjunction: str = "and", quote=False, oxford_comma: bool = True

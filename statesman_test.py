@@ -632,6 +632,14 @@ class TestDecoratorStateMachine:
             self.command = None
             self.pid = None
         
+        @statesman.enter_state(States.stopped)
+        async def _on_stop(self) -> None:
+            self.logs.append(f"_on_stop triggered")
+        
+        @statesman.after_event("terminate")
+        async def _terminated(self) -> None:
+            self.logs.append(f"_terminated")
+        
         async def after_transition(self, transition: statesman.Transition) -> None:
             if transition.event and transition.event.name == "stop":
                 await self.terminate()
@@ -683,7 +691,9 @@ class TestDecoratorStateMachine:
         assert state_machine.logs == [
             'Process pid 31337 is now running (command="ls -al")',
             'Shutting down pid 31337 (command="ls -al")',
-            'Terminated pid 31337 ("ls -al")'
+            'Terminated pid 31337 ("ls -al")',
+            '_on_stop triggered',
+            '_terminated'
         ]
         
         # Let the runloop cycle
