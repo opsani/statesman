@@ -65,6 +65,14 @@ class ProcessLifecycle(statesman.StateMachine):
         self.command = None
         self.pid = None
 
+    @statesman.enter_state(States.stopping)
+    async def _print_status(self) -> None:
+        print("Entering stopped status!")
+
+    @statesman.after_event("run")
+    async def _after_run(self) -> None:
+        print("running...")
+
     async def after_transition(self, transition: statesman.Transition) -> None:
         if transition.event and transition.event.name == "stop":
             await self.terminate()
