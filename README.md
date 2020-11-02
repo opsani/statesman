@@ -51,7 +51,7 @@ class ProcessLifecycle(statesman.StateMachine):
         self.pid = 31337
         self.logs.clear() # Flush logs between runs
 
-    @statesman.event("Mark as process as running", source=States.starting, target=States.running)
+    @statesman.event("Mark the process as running", source=States.starting, target=States.running)
     async def run(self, transition: statesman.Transition) -> None:
         self.logs.append(f"Process pid {self.pid} is now running (command=\"{self.command}\")")
 
@@ -76,6 +76,32 @@ class ProcessLifecycle(statesman.StateMachine):
     async def after_transition(self, transition: statesman.Transition) -> None:
         if transition.event and transition.event.name == "stop":
             await self.terminate()
+
+# Let's play.
+state_machine = ProcessLifecycle()
+await state_machine.start("ls -al")
+assert state_machine.command == "ls -al"
+assert state_machine.pid == 31337
+assert state_machine.state == States.starting
+
+await state_machine.run()
+assert state_machine.logs == ['Process pid 31337 is now running (command="ls -al")']
+
+await state_machine.stop()
+assert state_machine.logs == [
+    'Process pid 31337 is now running (command="ls -al")',
+    'Shutting down pid 31337 (command="ls -al")',
+    'Terminated pid 31337 ("ls -al")',
+]
+
+# Or start in a specific state
+state_machine = ProcessLifecycle(state=States.running)
+
+# Transition to a specific state
+await state_machine.enter_state(States.stopping)
+
+# Trigger an event
+await state_machine.trigger("stop", key="value")
 ```
 
 States are defined as Python enum classes. The name of the enum item defines a
@@ -90,7 +116,6 @@ transition.
 Once a method is decorated as an event action, the original method body is
 attached to the new event as an on event action and the method is replaced with
 a implementation that triggers the newly created event.
-
 
 Actions can be attached to events at declaration time or later on via the
 `guard_event`, `before_event`, `on_event`, and `after_event` decorators. Actions
