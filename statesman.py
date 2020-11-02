@@ -763,7 +763,6 @@ class ActionDescriptor(pydantic.BaseModel):
     ...
     
 # TODO: Make ... an alias for "any"?
-# TODO: Allow passing in `None` literal for sources?
 # TODO: Internal transition: target is blank, doesn't change
 # TODO: A default action without specifying source or target will create a universal internal action for whatever state
 def event(

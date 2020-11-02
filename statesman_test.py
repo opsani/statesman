@@ -604,12 +604,7 @@ class TestDecoratorStateMachine:
             starting = "Starting..."
             running = "Running..."
             stopping = "Stopping..."
-            stopped = "Terminated."
-        
-        # _states = States.to_states()
-        # _initial = States.starting
-        # __state__ = States.starting
-        # _state: States = States.starting # TODO: Find the field and update its signature
+            stopped = "Terminated."        
         
         # Track state about the process we are running
         command: Optional[str] = None
@@ -619,7 +614,6 @@ class TestDecoratorStateMachine:
         # initial state entry point
         @statesman.event("Start a Process", None, States.starting)
         async def start(self, command: str = "...") -> None:
-            debug("IN START!", self, command)
             self.command = command
             self.pid = 31337
             self.logs.clear() # Flush logs between runs
@@ -639,7 +633,6 @@ class TestDecoratorStateMachine:
             self.pid = None
         
         async def after_transition(self, transition: statesman.Transition) -> None:
-            debug(self, transition)
             if transition.event and transition.event.name == "stop":
                 await self.terminate()
     
