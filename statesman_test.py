@@ -416,7 +416,7 @@ class TestProgrammaticStateMachine:
             with pytest.raises(RuntimeError) as e:
                 await state_machine.trigger("finish")
             
-            assert str(e.value) == "event trigger failed: cannot trigger event in state machine without an initial state"
+            assert str(e.value) == 'event trigger failed: the "finish" event does not support initial state transitions'
         
         async def test_trigger_from_incompatible_state(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.stopping)
@@ -519,7 +519,6 @@ class TestProgrammaticStateMachine:
             async def test_on(self, state_machine: statesman.StateMachine, mocker) -> None:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event("finish")
-                debug(event.sources, state_machine.get_states(States.starting, States.running))
                 on_action = mocker.stub(name='action')
                 event.add_action(lambda: on_action(), statesman.Action.Types.on)
                 await state_machine.trigger("finish")
@@ -609,71 +608,98 @@ class TestDecoratorStateMachine:
         
         # _states = States.to_states()
         # _initial = States.starting
-        _state: States = States.starting # TODO: Find the field and update its signature
+        # __state__ = States.starting
+        # _state: States = States.starting # TODO: Find the field and update its signature
         
-        # TODO: Can I infer the states if you just give initial?
-        # states: States
-        # initial: Optional[States] = States.starting
+        # Track state about the process we are running
+        command: Optional[str] = None
+        pid: Optional[int] = None
+        logs: List[str] = []
         
         # initial state entry point
         @statesman.event("Start a Process", None, States.starting)
-        async def start(self) -> None:
-            # ellipsis indicates we have nothing to do
-            ...
+        async def start(self, command: str = "...") -> None:
+            debug("IN START!", self, command)
+            self.command = command
+            self.pid = 31337
+            self.logs.clear() # Flush logs between runs
         
-        # @statesman.event("Run a Process", from=States.starting, to=States.running)
-        # async def run(self, source: statesman.State, destination: statesman.State) -> AsyncIterator[None]:
-        #     # Here we are still in the old state
-        #     yield
-        #     # We are now in the new state
+        @statesman.event("Mark as process as running", source=States.starting, target=States.running)
+        async def run(self, transition: statesman.Transition) -> None:
+            self.logs.append(f"Process pid {self.pid} is now running (command=\"{self.command}\")")
         
-        # @statesman.event("Stop a Process", from=States.running, to=States.stopped)
-        # async def stop(self, source: statesman.State, destination: statesman.State) -> AsyncIterator[None]:
-        #     if ...:
-        #         # Cancel the transition
-        #         raise RuntimeError("transition cancelled")
-                
-        #     yield
+        @statesman.event("Stop a running process", source=States.running, target=States.stopping)
+        async def stop(self) -> None:
+            self.logs.append(f"Shutting down pid {self.pid} (command=\"{self.command}\")")
+        
+        @statesman.event("Terminate a running process", source=States.stopping, target=States.stopped)
+        async def terminate(self) -> None:
+            self.logs.append(f"Terminated pid {self.pid} (\"{self.command}\")")
+            self.command = None
+            self.pid = None
+        
+        async def after_transition(self, transition: statesman.Transition) -> None:
+            debug(self, transition)
+            if transition.event and transition.event.name == "stop":
+                await self.terminate()
     
     @pytest.fixture
     def state_machine(self) -> statesman.StateMachine:
-        # TODO: This should be declarative
         return TestDecoratorStateMachine.ProcessLifecycle()
         
     async def test_states_added(self, state_machine: statesman.StateMachine) -> None:
+        assert len(state_machine.states) == 4
+        assert state_machine.states[0].name == "starting"
+        assert state_machine.states[0].description == "Starting..."
+    
+    async def test_events_added(self, state_machine: statesman.StateMachine) -> None:
         event = state_machine.get_event("start")
         assert event
         assert event.description == "Start a Process"
         assert event.sources == [None]
         assert event.target == States.starting
     
-    async def test_events_added(self) -> None:
-        ...
+    async def test_trigger_event_through_method_call(self, state_machine: statesman.StateMachine) -> None:
+        assert state_machine.state is None
+        await state_machine.start()
+        assert state_machine.state
+        assert state_machine.state == States.starting
     
-    async def test_start(self) -> None:
-        # Triggers the event!
-        ...
+    async def test_trigger_event_through_method_call_with_args(self, state_machine: statesman.StateMachine, mocker) -> None:
+        with extra(state_machine):
+            callback_mock = mocker.spy(state_machine, "on_transition")
+            await state_machine.start(31337, this="That")
+            callback_mock.assert_called_once()
+            assert 31337 in callback_mock.call_args.args
+            assert { "this": "That" } == callback_mock.call_args.kwargs
     
-    # TODO: Test with args, test with generator fn
+    async def test_process_lifecycle(self, state_machine: statesman.StateMachine, mocker) -> None:
+        assert state_machine.pid is None
+        assert state_machine.command is None
         
-    #     ##
-    #     # State Hooks
+        await state_machine.start("ls -al")
+        assert state_machine.command == "ls -al"
+        assert state_machine.pid == 31337
+        assert state_machine.state == States.starting
+        assert len(state_machine.logs) == 0
         
-    #     @statesman.around(States.running)
-    #     async def do_something(self, state: statesman.State) -> AsyncIterator[None]:
-    #         # Before entry state
-    #         yield
-    #         #
+        await state_machine.run()
+        assert state_machine.logs == ['Process pid 31337 is now running (command="ls -al")']
         
-    #     @statesman.entry(States.stopped)
-    #     async def on_stop(self, state: statesman.State) -> None:
-    #         print("Process stopped")
+        await state_machine.stop()
+        assert state_machine.logs == [
+            'Process pid 31337 is now running (command="ls -al")',
+            'Shutting down pid 31337 (command="ls -al")',
+            'Terminated pid 31337 ("ls -al")'
+        ]
         
-    #     @statesman.entry(States.stopped)
-    #     async def on_stop(self, state: statesman.State) -> None:
-    #         print("Process stopped")
-
-    # state_machine.run("ls -al")
+        # Let the runloop cycle
+        await asyncio.sleep(0.001)
+        assert state_machine.state == States.stopped
+        assert state_machine.pid is None
+        assert state_machine.command is None
+        
+    
 
 @contextlib.contextmanager
 def extra(
@@ -689,3 +715,14 @@ def extra(
         yield obj
     finally:
         obj.__config__.extra = original
+
+
+async def test_matching_signature_overlapping_params() -> None:
+    def some_function(transition: str, *args, **kwargs) -> None:
+        ...
+    
+    args = ("whatever", )
+    kwargs = {"transition": "foo"}
+    
+    await statesman._call_with_matching_parameters(some_function, *args, **kwargs)
+    

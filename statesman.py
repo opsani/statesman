@@ -6,6 +6,7 @@ import datetime
 import enum
 import functools
 import inspect
+import types
 import typing
 from inspect import isclass
 from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Sequence, Type, Tuple, Union
@@ -321,65 +322,43 @@ class StateMachine(pydantic.BaseModel):
                 state_ = self.get_state(initial_state)
                 if not state_:
                     raise LookupError(f"invalid initial state: no state was found with the name \"{initial_state}\"")
-                debug("we are here", self, state_)
                 self._state = state_
                 
         else:
             raise TypeError(f"invalid initial state: unexpected value of type \"{state.__class__.__name__}\": {state}")
         
         # Initialize any decorated methods
-        debug("fields", self.__class__.__fields__)
         for name, method in self.__class__.__dict__.items():
-            # debug("checking", name, method)
-            # if inspect.ismethod(method):
             if descriptor := getattr(method, "__event_descriptor__", None):
                 debug("found descriptor ", descriptor, method, method.__name__)
                 target = self.get_state(descriptor.target)
                 if not target:
-                    # TODO: Test
-                    raise ValueError("adas")
-                debug(f"Got target from {descriptor.target}", target)
+                    raise ValueError(f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
+                
+                source_names = list(filter(lambda s: s is not None, descriptor.source))
+                sources = self.get_states(*source_names) #if isinstance(descriptor.source, list) else descriptor.source
+                if None in descriptor.source:
+                    sources.append(None)
+
                 event = Event(
                     name=method.__name__,
                     description=descriptor.description,
-                    sources=[descriptor.source],
+                    sources=sources,
                     target=target,
-                    guard=descriptor.guard,
-                    before=descriptor.before,
-                    after=descriptor.after,
                 )
-                self.add_event(event)
-    
-    # @pydantic.validator("_states", check_fields=False)
-    # def _add_states_from_nested_enum(cls, value: List[State]) -> List[State]:
-    #     debug(value)
-    #     debug(getattr(cls, "States", None))
-    #     if state_enum := getattr(cls, "States", None):
-    #         assert issubclass(state_enum, StateEnum), "States class must be a subclass of StateEnum"
-    #         value.extend(State.from_enum(state_enum))
-        
-    #     return value
-    
-    # @pydantic.root_validator()
-    # def _map_declarative_states(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-    #     debug("DECLARATIVE ", values, cls._states)
-    #     import typing
-    #     type_hints = typing.get_type_hints(cls)
-    #     debug(type_hints)
-    #     state_enum = type_hints["__state__"]
-    #     debug(state_enum)
-    #     if state_enum is not StateEnum:
-    #         debug("adding states")
-    #         values['_states'] = State.from_enum(state_enum)
-    #         # del values['states']
-        
-    #     debug("new values", values, cls.__fields__)
-    #     return values
-    
-    # @pydantic.validator("_state")
-    # @classmethod
-    # def _map_declarative_state(cls, value) -> Dict[str, Any]:
-        
+                
+                # Create bound methods and attach them as actions
+                for type_ in Action.Types:
+                    if not hasattr(descriptor, type_.name):
+                        continue
+                    
+                    callables = getattr(descriptor, type_.name)
+                    for callable in callables:
+                        event.add_action(
+                            types.MethodType(callable, self), 
+                            type_
+                        )
+                        self.add_event(event)
     
     @property
     def state(self) -> Optional[State]:
@@ -460,7 +439,8 @@ class StateMachine(pydantic.BaseModel):
     async def trigger(self, event: Union[Event, str], *args, **kwargs) -> bool:
         """Trigger a state transition event.
         
-        The state machine must be in a state that is a source state of the event being triggered.
+        The state machine must be in a source state of the event being triggered. Initial event transitions
+        can be triggered for events that have included `None` in their source states list.
         
         Args:
             event: The event to trigger a state transition with.
@@ -474,23 +454,25 @@ class StateMachine(pydantic.BaseModel):
             ValueError: Raised if the event object is not a part of the state machine.
             LookupError: Raised if the event cannot be found by name.
             TypeError: Raised if the event value given is not an Event or str object.
-        """
-        if self.state is None:
-            raise RuntimeError(f"event trigger failed: cannot trigger event in state machine without an initial state")
-        
+        """        
         if isinstance(event, Event):
             event_ = event
             if event_ not in self._events:
                 raise ValueError(f"event trigger failed: the event object given is not in the state machine")
+            
         elif isinstance(event, str):
             event_ = self.get_event(event)
             if not event_:
                 raise LookupError(f"event trigger failed: no event was found with the name \"{event}\"")
+            
         else:
             raise TypeError(f"event trigger failed: cannot trigger an event of type \"{event.__class__.__name__}\": {event}")
         
         if self.state not in event_.sources:
-            raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"")
+            if self.state:
+                raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"")
+            else:
+                raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions")
         
         transition = Transition(state_machine=self, event=event_, source=self.state, target=event_.target)
         return await transition(*args, **kwargs)
@@ -654,12 +636,12 @@ class Transition(pydantic.BaseModel):
             # Guards can cancel the transition via return value or failed assertion
             self.cancelled = False
             try:
-                if not await self.state_machine.guard_transition(self, *args, **kwargs):
+                if not await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs):
                     raise AssertionError(f"transition cancelled by guard_transition callback")
             except AssertionError:
                 self.cancelled = True
-                return False
-            await self.state_machine.before_transition(self, *args, **kwargs)
+                return False            
+            await _call_with_matching_parameters(self.state_machine.before_transition, self, *args, **kwargs)
 
             try:
                 results = await self._run_actions(self.event, Action.Types.guard)
@@ -679,15 +661,15 @@ class Transition(pydantic.BaseModel):
                 try:
                     await self._run_actions(self.source, Action.Types.exit)
                     self.state_machine._state = self.target
-                    await self.state_machine.on_transition(self, *args, **kwargs)
+                    await _call_with_matching_parameters(self.state_machine.on_transition, self, *args, **kwargs)
                     await self._run_actions(self.event, Action.Types.on)
                     await self._run_actions(self.target, Action.Types.entry)
                 except Exception:
                     self.state_machine._state = self.source
                     raise
                     
-            await self._run_actions(self.event, Action.Types.after)        
-            await self.state_machine.after_transition(self, *args, **kwargs)
+            await self._run_actions(self.event, Action.Types.after)
+            await _call_with_matching_parameters(self.state_machine.after_transition, self, *args, **kwargs)
             
             return True
     
@@ -737,11 +719,45 @@ Target = Union[None, StateIdentifier]
 
 class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
-    source: Source
+    source: List[Union[None, StateIdentifier]]
     target: Target
-    guard: Union[None, Callable, List[Callable]] # TODO: Needs to just be strings...
-    before: Union[None, Callable, List[Callable]]
-    after: Union[None, Callable, List[Callable]]
+    guard: List[Callable] #Union[None, Callable, List[Callable]]
+    before: List[Callable] #Union[None, Callable, List[Callable]]
+    on: List[Callable]
+    after: List[Callable] #Union[None, Callable, List[Callable]]
+    
+    @pydantic.validator("source", pre=True)
+    @classmethod
+    def _listify_sources(cls, value: Source) -> List[Union[None, StateIdentifier]]:
+        identifiers = []
+        
+        if isinstance(value, list):
+            identifiers.extend(value)
+        else:
+            identifiers.append(value)
+        
+        return identifiers
+
+    @pydantic.validator("source", each_item=True, pre=True)
+    def _map_enums(cls, v) -> Optional[str]:
+        if isinstance(v, StateEnum):
+            return v.name
+        
+        return v
+    
+    @pydantic.validator("guard", "before", "on", "after", pre=True)
+    @classmethod
+    def _listify_actions(cls, value: Union[None, Callable, List[Callable]]) -> List[Callable]:
+        callables = []
+        
+        if value is None:
+            pass
+        elif isinstance(value, Callable):
+            callables.append(value)
+        elif isinstance(value, list):
+            callables.extend(value)
+        
+        return callables
 
 class ActionDescriptor(pydantic.BaseModel):
     ...
@@ -763,7 +779,6 @@ def event(
     """Transform a method into a state machine event."""      
     def decorator(fn):
         target_ = target.name if isinstance(target, StateEnum) else target
-        debug(source, target, target_)
         descriptor = EventDescriptor(
             description=description,
             source=source,
@@ -771,41 +786,16 @@ def event(
             guard=guard,
             before=before,
             after=after,
+            on=fn
         )
         
         @functools.wraps(fn)
-        async def event_trigger(*args, **kwargs) -> None:
-            if asyncio.iscoroutinefunction(fn):
-                return await fn(*args, **kwargs)
-            else:
-                fn(*args, **kwargs)
+        async def event_trigger(self, *args, **kwargs) -> bool:
+            # NOTE: The original function is attached as an on event handler
+            return await self.trigger(fn.__name__, *args, **kwargs)
         
         event_trigger.__event_descriptor__ = descriptor
         return event_trigger
-        
-        # sources = 
-        # TODO: None of this shit can be attached until the class is constructed...
-        # debug(source, target)
-        # event = Event(
-        #     name=fn.__name__,
-        #     description=description,
-        #     sources=source,
-        #     target=target,
-        #     callable=fn
-        # )
-        # # TODO: These guys need to accept multiple?
-        # if guard:
-        #     event.add_action(guard, Action.Types.guard)
-        # if before:
-        #     event.add_action(before, Action.Types.before)
-        # if after:
-        #     event.add_action(after, Action.Types.after)
-        
-        # TODO: Replace the method body with an event dispatch
-        
-        # fn.__event__ = event
-        fn.__event__ = descriptor
-        return fn
 
     return decorator
 
@@ -857,7 +847,7 @@ def _summarize(
 def _quote(values: Sequence[str]) -> List[str]:
     """Return a sequence of strings surrounding each value in double quotes."""
     return list(map(lambda v: f"\"{v}\"", values))
-
+    
 def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs) -> Tuple[List[Any], Dict[str, Any]]:
     """Return a tuple of positional and keyword parameters that match a callable signature.
     
@@ -887,6 +877,9 @@ def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs
             # positional or keyword: check kwargs first and then dequeue from args
             if name in kwargs_copy:
                 matched_kwargs[name] = kwargs_copy.pop(name)
+                if len(args_copy):
+                    # pop the positional arg we have consumed via keyword match
+                    args_copy.popleft()
             elif len(args_copy):
                 matched_args.append(args_copy.popleft())
                 
@@ -903,3 +896,11 @@ def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs
             kwargs_copy.clear()
     
     return matched_args, matched_kwargs
+
+async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) -> Any:
+    """Call a callable with all parameters that match its signature and return the results."""
+    matched_args, matched_kwargs = _parameters_matching_signature(inspect.Signature.from_callable(callable), *args, **kwargs)
+    if asyncio.iscoroutinefunction(callable):
+        return await callable(*matched_args, **matched_kwargs)
+    else:
+        return callable(*matched_args, **matched_kwargs)
