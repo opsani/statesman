@@ -26,7 +26,6 @@ __all__ = [
     "exit_state"
 ]
 
-# class StateEnum(str, enum.Enum):
 class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
     
@@ -34,12 +33,7 @@ class StateEnum(enum.Enum):
     symbolic name of the state within the state machine while the `value` attribute defines the human readable 
     description.
     """
-    @classmethod
-    # TODO: as_states() ???
-    def to_states(cls) -> List['State']:
-        """Return a list of `State` objects for each item in the enumeration."""
-        return State.from_enum(cls)
-
+    pass
 
 class Action(pydantic.BaseModel):
     """An Action is a callable object attached to states and events within a state machine."""
