@@ -8,7 +8,6 @@ import functools
 import inspect
 import types
 import typing
-from inspect import isclass
 from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Sequence, Type, Tuple, Union
 
 import pydantic
@@ -23,8 +22,26 @@ __all__ = [
     "event",
     "on_state",
     "enter_state",
-    "exit_state"
+    "exit_state",
+    "HistoryMixin"
 ]
+
+
+class classproperty:
+    """Decorator that transforms a method with a single cls argument into a property
+    that can be accessed directly from the class.
+    """
+    def __init__(self, method=None):
+        self.fget = method
+
+    def __get__(self, instance, cls=None):
+        return self.fget(cls)
+
+    def getter(self, method):
+        self.fget = method
+        return self
+
+ActiveState = Literal["__active__"]
 
 class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
@@ -33,7 +50,16 @@ class StateEnum(enum.Enum):
     symbolic name of the state within the state machine while the `value` attribute defines the human readable 
     description.
     """
-    pass
+    @classproperty
+    def __any__(cls) -> 'List[StateEnum]':
+        """Return a list of all members of the enumeration for use when any state is available."""
+        return list(cls)
+
+    @classproperty
+    def __active__(cls) -> str:
+        """Return a sentinel string value that indicates that the state is to remain the currently active value."""
+        return "__active__"
+
 
 class Action(pydantic.BaseModel):
     """An Action is a callable object attached to states and events within a state machine."""
@@ -121,13 +147,18 @@ class State(BaseModel):
     def from_enum(cls, class_: Type[StateEnum]) -> List['State']:
         """Return a list of State objects from a state enum subclass."""
         states = []
-        if isclass(class_) and issubclass(class_, StateEnum):
+        if inspect.isclass(class_) and issubclass(class_, StateEnum):
             for item in class_:
                 states.append(cls(name=item.name, description=item.value))
         else:
             raise TypeError(f"invalid parameter: \"{class_.__class__.__name__}\" is not a StateEnum subclass: {class_}")
         
         return states
+    
+    @classmethod
+    def active(cls) -> 'State':
+        """Return a temporary state object that represents the active state at a future point in time."""
+        return State(name="__active__", description="The active state at transition time.")
 
     @pydantic.validator("name", "description", pre=True)
     @classmethod
@@ -189,7 +220,7 @@ class State(BaseModel):
         - Passing `Action.Types.enter` or `Action.Types.exit` will remove all actions that match the given type.
         """
         return super()._remove_actions(actions)
-
+    
 class Event(BaseModel):
     """Event objects model something that happens within a state machine that triggers a transition from one state to another.
     
@@ -197,7 +228,7 @@ class Event(BaseModel):
         name: A unique name of the event within the state machine.
         description: An optional description of the event.
         sources: A list of states that the event can be triggered from. The inclusion of `None` denotes an initialization event.
-        target: The state that the state machine will transition into at the completion of the event.
+        target: The state that the state machine will transition into at the completion of the event. When `...`, the states does not change.
     """
     name: str
     description: Optional[str] = None    
@@ -283,7 +314,7 @@ class StateMachine(pydantic.BaseModel):
         if not state_enum:
             type_hints = typing.get_type_hints(self.__class__)
             state_hint = type_hints["__state__"]
-            if isclass(state_hint) and issubclass(state_hint, StateEnum):
+            if inspect.isclass(state_hint) and issubclass(state_hint, StateEnum):
                 self._states.extend(State.from_enum(state_hint))
             else:
                 # Introspect the type hint
@@ -292,10 +323,9 @@ class StateMachine(pydantic.BaseModel):
                     args = typing.get_args(state_hint)
 
                     for arg in args:
-                        if isclass(arg) and issubclass(arg, StateEnum):
+                        if inspect.isclass(arg) and issubclass(arg, StateEnum):
                             self._states.extend(State.from_enum(arg))
                 else:
-                    # TODO: Handle other reasonable hints
                     raise TypeError(f"unsupported type hint: \"{state_hint}\"")
         
         # Initial state
@@ -324,9 +354,13 @@ class StateMachine(pydantic.BaseModel):
         # Initialize any decorated methods
         for name, method in self.__class__.__dict__.items():
             if descriptor := getattr(method, "__event_descriptor__", None):
-                target = self.get_state(descriptor.target)
-                if not target:
-                    raise ValueError(f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
+                debug(descriptor.target)
+                if State.active() == descriptor.target:
+                    target = State.active()
+                else:
+                    target = self.get_state(descriptor.target)
+                    if not target:
+                        raise ValueError(f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
                 
                 source_names = list(filter(lambda s: s is not None, descriptor.source))
                 sources = self.get_states(*source_names)
@@ -398,7 +432,7 @@ class StateMachine(pydantic.BaseModel):
             self.remove(state)
     
     def get_state(self, name: Union[str, StateEnum]) -> Optional[State]:
-        """Retrieve a list of states in the state machine by name."""
+        """Retrieve a state object by name or enum value."""
         name_ = name.name if isinstance(name, StateEnum) else name
         return next(filter(lambda s: s.name == name_, self.states), None)
     
@@ -406,7 +440,7 @@ class StateMachine(pydantic.BaseModel):
         """Retrieve a list of states in the state machine by name."""
         names_ = []
         for name in names:
-            if isclass(name) and issubclass(name, StateEnum):
+            if inspect.isclass(name) and issubclass(name, StateEnum):
                 names_.extend(list(map(lambda i: i.name, name)))
             elif isinstance(name, (StateEnum, str)):
                 name_ = name.name if isinstance(name, StateEnum) else name
@@ -488,7 +522,11 @@ class StateMachine(pydantic.BaseModel):
             else:
                 raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions")
         
-        transition = Transition(state_machine=self, event=event_, source=self.state, target=event_.target)
+        # Substitute the active state if necessary
+        target = self.state if event_.target == State.active() else event_.target
+        if self.state is None and target is None:
+            raise RuntimeError(f"event trigger failed: cannot transition from a None state to another None state")
+        transition = Transition(state_machine=self, event=event_, source=self.state, target=target)
         return await transition(*args, **kwargs)
     
     async def enter_state(self, state: Union[State, StateEnum, str], *args, **kwargs) -> bool:
@@ -729,7 +767,7 @@ class Transition(pydantic.BaseModel):
 
 StateIdentifier = Union[StateEnum, str]
 Source = Union[None, StateIdentifier, List[StateIdentifier], Type[StateEnum]]
-Target = Union[None, StateIdentifier]
+Target = Union[None, StateIdentifier, ActiveState]
 
 class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
@@ -780,7 +818,6 @@ class ActionDescriptor(pydantic.BaseModel):
     type: Action.Types
     callable: Callable
     
-# TODO: Make ... an alias for "any"?
 # TODO: Internal transition: target is blank, doesn't change
 # TODO: A default action without specifying source or target will create a universal internal action for whatever state
 def event(
@@ -948,3 +985,22 @@ async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) ->
         return await callable(*matched_args, **matched_kwargs)
     else:
         return callable(*matched_args, **matched_kwargs)
+
+
+class HistoryMixin(pydantic.BaseModel):
+    """A mixin that records all transitions that occur within the state machine."""
+    __private_attributes__ = { "_transitions": pydantic.PrivateAttr([]) }
+        
+    async def after_transition(self, transition: Transition) -> None:
+        """Append a completed transition to the history."""
+        debug("CALLED!!!")
+        self._transitions.append(transition)
+    
+    @property
+    def history(self) -> List[Transition]:
+        """Return a list of historical transitions that have occurred within the state machine."""
+        return self._transitions.copy()
+    
+    def clear_history(self) -> None:
+        """Clear the history of recorded transitions."""
+        self._transitions.clear()
