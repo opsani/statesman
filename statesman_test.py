@@ -344,6 +344,18 @@ class TestProgrammaticStateMachine:
         stub.assert_called()
         assert stub.call_count == 3
     
+    async def test_create_no_state(self) -> None:
+        state_machine = await statesman.StateMachine.create(states=statesman.State.from_enum(States))
+        assert state_machine.state is None
+    
+    async def test_create_enter_specific_state(self) -> None:
+        state_machine = await statesman.StateMachine.create(
+            states=statesman.State.from_enum(States),
+            state=States.stopping
+        )
+        assert state_machine.state == States.stopping
+    
+    
     @pytest.mark.parametrize(
         ("callback"),
         [

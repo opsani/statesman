@@ -437,6 +437,26 @@ class StateMachine(pydantic.BaseModel):
                     descriptor.type
                 )
     
+    @classmethod
+    async def create(
+        cls, 
+        states: List[State] = [], 
+        events: List[Event] = [], 
+        state: Optional[Union[State, str, StateEnum]] = None, 
+        *args, 
+        **kwargs
+    ) -> 'StateMachine':
+        """Asynchronously create a state machine and return it in the initial state.
+        
+        Actions are executed and arbitrary parameters can be supplied just as in the `enter_state` method.
+        """
+        state_machine = cls(states=states, events=events)
+        state_ = state or state_machine.state
+        if state_:
+            if not await state_machine.enter_state(state_, *args, **kwargs):
+                raise RuntimeError(f"failed creation of state machine: could not enter the requested state")
+        return state_machine
+        
     @property
     def state(self) -> Optional[State]:
         """Return the current state of the state machine."""
@@ -676,7 +696,6 @@ class StateMachine(pydantic.BaseModel):
         pass
     
     class Config:
-        # direct_entry?
         allow_entry = "initial" # TODO: any, forbid, accept...
         guard_with = "exception" # TODO: warning, silence
 
