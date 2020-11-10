@@ -435,7 +435,6 @@ class StateMachine(pydantic.BaseModel):
     
     def add_states(self, states: Sequence[State]) -> None:
         """Add a sequence of states to the state machine."""
-        # self._states.extend(states)
         [self.add_state(state) for state in states]
     
     def remove_state(self, state: State) -> None:
@@ -449,8 +448,6 @@ class StateMachine(pydantic.BaseModel):
     
     def remove_states(self, states: Sequence[State]) -> None:
         """Remove a sequence of states from the state machine."""
-        # for state in states:
-        #     self.remove_state(state)
         [self.remove_state(state) for state in states]
     
     def get_state(self, name: Union[str, StateEnum]) -> Optional[State]:
@@ -490,7 +487,6 @@ class StateMachine(pydantic.BaseModel):
     
     def add_events(self, events: Sequence[Event]) -> None:
         """Add a list of events to the state machine."""
-        # self._events.extend(states)
         [self.add_event(event) for event in events]
     
     def remove_event(self, event: Event) -> None:
@@ -667,8 +663,8 @@ class StateMachine(pydantic.BaseModel):
     
     class Config:
         # direct_entry?
-        allow_entry = "initial" # any, forbid, accept...
-        guard_with = "exception" # warning, silence
+        allow_entry = "initial" # TODO: any, forbid, accept...
+        guard_with = "exception" # TODO: warning, silence
 
 
 class Transition(pydantic.BaseModel):
@@ -1027,7 +1023,6 @@ class HistoryMixin(pydantic.BaseModel):
         
     async def after_transition(self, transition: Transition) -> None:
         """Append a completed transition to the history."""
-        debug("CALLED!!!")
         self._transitions.append(transition)
     
     @property
