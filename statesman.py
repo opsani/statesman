@@ -293,13 +293,17 @@ class Event(BaseModel):
 class StateMachine(pydantic.BaseModel):
     """StateMachine objects model state machines comprised of states, events, and associated actions.
     
+    Initial state can be established via the `state` argument to the initializer but will not trigger
+    any actions, as object initialization is run synchronously. If your state machine has actions on
+    the initial state or entry events, initialize the state machine into an indeterminate state and then
+    call `enter_state` or `trigger` to establish initial state and call all associated actions.
+    
     Args:
         states: A list of states to add to the state machine.
         events: A list of events to add to the state machine.
         state: The initial state of the state machine. When `None` the state machine initializes into an 
             indeterminate state. The `enter_state` and `trigger` methods can be used to establish an initial
             state post-initialization.
-    # TODO: add a note about using enter_state if you need args and init not calling entry callbacks
     """
     __state__: Optional[StateEnum] = None
     
@@ -480,7 +484,6 @@ class StateMachine(pydantic.BaseModel):
             raise ValueError(f"an event named \"{event.name}\" already exists")
         
         if missing := event.states - set(self.states):
-            debug(missing, event.states)
             names = _summarize(list(map(lambda s: s.name, missing)), quote=True)            
             raise ValueError(f"cannot add an event that references unknown states: {names}")
         self._events.append(event)
