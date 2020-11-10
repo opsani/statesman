@@ -524,11 +524,6 @@ class StateMachine(pydantic.BaseModel):
             raise TypeError(f"cannot get event for name of type \"{name.__class__.__name__}\": {name}")
         
         return next(filter(lambda e: e.name == name_, self._events), None)
-
-    # _states = States.to_states()
-    # _initial = States.starting
-    # __state__ = States.starting
-    # _state: States = States.starting # TODO: Find the field and update its signature
     
     async def trigger(self, event: Union[Event, str], *args, **kwargs) -> bool:
         """Trigger a state transition event.
