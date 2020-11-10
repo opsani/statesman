@@ -8,7 +8,7 @@ import functools
 import inspect
 import types
 import typing
-from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Sequence, Type, Tuple, Union
+from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Set, Sequence, Type, Tuple, Union
 
 import pydantic
 
@@ -101,7 +101,7 @@ class Action(pydantic.BaseModel):
 
 
 class BaseModel(pydantic.BaseModel):
-    """Provides common functionality for statesman models."""
+    """Provides common functionality for statesman models."""    
     _actions: List[Action] = pydantic.PrivateAttr([])
         
     def _add_action(self, action: Action) -> None:
@@ -139,6 +139,10 @@ class State(BaseModel):
     """Models a state within a state machine.
     
     State objects can be tested for equality against `str` and `StateEnum` objects.
+    
+    Attributes:
+        name: A unique name of the state within the state machine.
+        description: An optional description of the state.
     """
     name: str
     description: Optional[str] = None
@@ -187,6 +191,9 @@ class State(BaseModel):
         else:
             return super().__eq__(other)
     
+    def __hash__(self):
+        return hash(self.name)
+    
     @property
     def actions(self) -> List[Action]:
         """Return a list of entry and exit actions attached to the state."""
@@ -222,7 +229,7 @@ class State(BaseModel):
         return super()._remove_actions(actions)
     
 class Event(BaseModel):
-    """Event objects model something that happens within a state machine that triggers a transition from one state to another.
+    """Event objects model something that happens within a state machine that triggers a state transition.
     
     Attributes:
         name: A unique name of the event within the state machine.
@@ -231,7 +238,7 @@ class Event(BaseModel):
         target: The state that the state machine will transition into at the completion of the event. When `...`, the states does not change.
     """
     name: str
-    description: Optional[str] = None    
+    description: Optional[str] = None
     sources: List[Union[None, State]]
     target: State
     
@@ -275,6 +282,14 @@ class Event(BaseModel):
         """
         return super()._remove_actions(actions)
 
+    @property
+    def states(self) -> Set['State']:
+        """Return a set of all states referenced by the event."""
+        return (set(self.sources) | {self.target}) - {None}
+    
+    def __hash__(self):
+        return hash(self.name)
+
 class StateMachine(pydantic.BaseModel):
     """StateMachine objects model state machines comprised of states, events, and associated actions.
     
@@ -286,7 +301,6 @@ class StateMachine(pydantic.BaseModel):
             state post-initialization.
     # TODO: add a note about using enter_state if you need args and init not calling entry callbacks
     """
-    # __state__: ClassVar[Optional[StateEnum]] = None
     __state__: Optional[StateEnum] = None
     
     _state: Optional[State] = pydantic.PrivateAttr(None)
@@ -354,7 +368,6 @@ class StateMachine(pydantic.BaseModel):
         # Initialize any decorated methods
         for name, method in self.__class__.__dict__.items():
             if descriptor := getattr(method, "__event_descriptor__", None):
-                debug(descriptor.target)
                 if State.active() == descriptor.target:
                     target = State.active()
                 else:
@@ -406,30 +419,39 @@ class StateMachine(pydantic.BaseModel):
     
     @property
     def state(self) -> Optional[State]:
-        """Return the current state f the state machine."""
+        """Return the current state of the state machine."""
         return self._state
     
     @property
     def states(self) -> List[State]:
-        """Return the list of states in the machine."""
+        """Return the list of states in the state machine."""
         return self._states.copy()
     
     def add_state(self, state: State) -> None:
-        """Add a state to the machine."""
+        """Add a state to the state machine."""
+        if self.get_state(state.name):
+            raise ValueError(f"a state named \"{state.name}\" already exists")
         self._states.append(state)
     
-    def add_states(self, states: List[State]) -> None:
-        """Add a list of states to the machine."""
-        self._states.extend(states)
+    def add_states(self, states: Sequence[State]) -> None:
+        """Add a sequence of states to the state machine."""
+        # self._states.extend(states)
+        [self.add_state(state) for state in states]
     
     def remove_state(self, state: State) -> None:
-        """Remove a state from the machine."""
+        """Remove a state from the state machine.
+        
+        Removing a state implicitly removes all events that reference the state as a source or target.
+        """
+        events = list(filter(lambda event: state in event.states, self.events))
+        self.remove_events(events)
         self._states.remove(state)
     
-    def remove_states(self, states: List[State]) -> None:
-        """Remove a list of states from the machine."""
-        for state in states:
-            self.remove(state)
+    def remove_states(self, states: Sequence[State]) -> None:
+        """Remove a sequence of states from the state machine."""
+        # for state in states:
+        #     self.remove_state(state)
+        [self.remove_state(state) for state in states]
     
     def get_state(self, name: Union[str, StateEnum]) -> Optional[State]:
         """Retrieve a state object by name or enum value."""
@@ -437,7 +459,7 @@ class StateMachine(pydantic.BaseModel):
         return next(filter(lambda s: s.name == name_, self.states), None)
     
     def get_states(self, *names: List[Union[str, StateEnum]]) -> List[State]:
-        """Retrieve a list of states in the state machine by name."""
+        """Retrieve a list of states in the state machine by name or enum value."""
         names_ = []
         for name in names:
             if inspect.isclass(name) and issubclass(name, StateEnum):
@@ -457,18 +479,30 @@ class StateMachine(pydantic.BaseModel):
     
     def add_event(self, event: Event) -> None:
         """Add an event to the state machine."""
+        if self.get_event(event.name):
+            raise ValueError(f"an event named \"{event.name}\" already exists")
+        
+        if missing := event.states - set(self.states):
+            debug(missing, event.states)
+            names = _summarize(list(map(lambda s: s.name, missing)), quote=True)            
+            raise ValueError(f"cannot add an event that references unknown states: {names}")
         self._events.append(event)
     
-    def add_events(self, states: List[State]) -> None:
-        """Add a list of events to the machine."""
-        self._events.extend(states)
+    def add_events(self, events: Sequence[Event]) -> None:
+        """Add a list of events to the state machine."""
+        # self._events.extend(states)
+        [self.add_event(event) for event in events]
     
     def remove_event(self, event: Event) -> None:
         """Remove an event from the state machine."""
         self._events.remove(event)
     
+    def remove_events(self, events: Sequence[Event]) -> None:
+        """Remove a sequence of event from the state machine."""
+        [self.remove_event(event) for event in events]
+    
     def get_event(self, name: Union[str, StateEnum]) -> Optional[Event]:
-        """Return the event with the given name or None if not found."""
+        """Return the event with the given name or None if the state cannot be found."""
         if isinstance(name, (str, StateEnum)):
             name_ = name.name if isinstance(name, StateEnum) else name
         else:
@@ -476,9 +510,6 @@ class StateMachine(pydantic.BaseModel):
         
         return next(filter(lambda e: e.name == name_, self._events), None)
 
-    # TODO: cannot add an event to the machine that references an unknown state
-    # TODO: when adding/removing a state or event, remove all the transitions it is referenced in
-    # TODO: check that state and event aren't already in the state machine
     # _states = States.to_states()
     # _initial = States.starting
     # __state__ = States.starting
@@ -810,6 +841,9 @@ class EventDescriptor(pydantic.BaseModel):
             callables.extend(value)
         
         return callables
+
+    def __hash__(self):
+        return hash(self.name)
 
 class ActionDescriptor(pydantic.BaseModel):
     model: Type[BaseModel]

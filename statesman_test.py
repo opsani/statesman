@@ -253,6 +253,22 @@ class TestProgrammaticStateMachine:
         assert len(state_machine.states) == 1
         state = state_machine.states[0]
         assert state == States.starting
+        
+    def test_add_state_cannot_duplicate_existing_name(self) -> None:
+        state_machine = statesman.StateMachine()
+        state_machine.add_state(
+            statesman.State(
+                name=States.starting
+            )
+        )
+        assert len(state_machine.states) == 1
+        
+        with pytest.raises(ValueError, match='a state named "starting" already exists'):
+            state_machine.add_state(
+                statesman.State(
+                    name=States.starting
+                )
+            )
     
     def test_add_states(self) -> None:
         state_machine = statesman.StateMachine()
@@ -361,6 +377,51 @@ class TestProgrammaticStateMachine:
             callback_mock = mocker.spy(state_machine, "on_transition")
             await state_machine.enter_state(States.starting, 1234, foo="bar")
             callback_mock.assert_not_called()
+    
+    def test_add_event_fails_if_existing(self) -> None:
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
+        state = state_machine.states[0]
+        state_machine.add_event(
+            statesman.Event(
+                name="finish",
+                sources=[state],
+                target=state
+            )
+        )
+        with pytest.raises(ValueError, match='an event named "finish" already exists'):
+            state_machine.add_event(
+                statesman.Event(
+                    name="finish",
+                    sources=[state],
+                    target=state
+                )
+            )
+        
+    def test_add_event_fails_with_unknown_state(self) -> None:
+        state_machine = statesman.StateMachine()
+        state = statesman.State("invalid")
+        with pytest.raises(ValueError, match='cannot add an event that references unknown states: "invalid"'):
+            state_machine.add_event(
+                statesman.Event(
+                    name="finish",
+                    sources=[state],
+                    target=state
+                )
+            )
+    
+    def test_removing_state_clears_all_referencing_events(self) -> None:
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
+        state = state_machine.states[0]
+        event = statesman.Event(
+            name="finish",
+            sources=[state],
+            target=state
+        )
+        state_machine.add_event(event)
+        assert state_machine.events == [event]
+        
+        state_machine.remove_state(state)
+        assert state_machine.events == []
             
     class TestTrigger:
         @pytest.fixture
@@ -598,7 +659,6 @@ class TestDecoratorStateMachine:
         state_machine = TestMachine()
         debug(state_machine, state_machine._state, state_machine._initial, state_machine._state_enum, TestMachine.states, state_machine.states)
 
-    # @statesman.machine(name="Process Lifecycle State Machine", states=States, initial_state=States.starting)
     class ProcessLifecycle(statesman.StateMachine):
         class States(statesman.StateEnum):
             starting = "Starting..."
