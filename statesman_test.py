@@ -9,8 +9,6 @@ import statesman
 
 import devtools
 
-from statesman import StateEnum
-
 builtins.debug = devtools.debug
 
 pytestmark = pytest.mark.asyncio
@@ -474,10 +472,8 @@ class TestProgrammaticStateMachine:
         
         async def test_trigger_without_state_raises(self, state_machine: statesman.StateMachine) -> None:
             assert state_machine.state == None
-            with pytest.raises(RuntimeError) as e:
+            with pytest.raises(RuntimeError, match='event trigger failed: the "finish" event does not support initial state transitions'):
                 await state_machine.trigger("finish")
-            
-            assert str(e.value) == 'event trigger failed: the "finish" event does not support initial state transitions'
         
         async def test_trigger_from_incompatible_state(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.stopping)
@@ -761,8 +757,34 @@ class TestDecoratorStateMachine:
         assert state_machine.state == States.stopped
         assert state_machine.pid is None
         assert state_machine.command is None
-        
+
+class TestInitialState:
+    class StateMachine(statesman.StateMachine):
+        class States(statesman.StateEnum):
+            starting = "Starting..."
+            running = "Running..."
+            stopping = "Stopping..."
+            stopped = statesman.InitialState("Terminated.")
+                
+    def test_initial_property(self) -> None:
+        assert TestInitialState.StateMachine.States.__initial__
+        assert TestInitialState.StateMachine.States.__initial__ == TestInitialState.StateMachine.States.stopped
     
+    def test_initial_state_is_set_on_state_machine(self) -> None:        
+        state_machine = TestInitialState.StateMachine()
+        assert state_machine.state == TestInitialState.StateMachine.States.stopped
+    
+    def test_initial_state_can_be_overridden(self) -> None:
+        state_machine = TestInitialState.StateMachine(state=TestInitialState.StateMachine.States.running)
+        assert state_machine.state == TestInitialState.StateMachine.States.running
+    
+    def test_cannot_set_multiple_initial_states(self) -> None:
+        with pytest.raises(ValueError, match='cannot declare more than one initial state: "States.one" already declared'):
+            class States(statesman.StateEnum):
+                one = statesman.InitialState("1")
+                two = "2"
+                three = "3"
+                four = statesman.InitialState("4")
 
 @contextlib.contextmanager
 def extra(

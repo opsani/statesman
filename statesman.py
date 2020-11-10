@@ -18,6 +18,7 @@ __all__ = [
     "State",
     "Transition",
     "Event",
+    "InitialState",
     "StateMachine",
     "event",
     "on_state",
@@ -43,6 +44,10 @@ class classproperty:
 
 ActiveState = Literal["__active__"]
 
+class InitialState(str):
+    """Declares the initial state in a state machine."""
+    pass
+
 class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
     
@@ -59,7 +64,15 @@ class StateEnum(enum.Enum):
     def __active__(cls) -> str:
         """Return a sentinel string value that indicates that the state is to remain the currently active value."""
         return "__active__"
-
+    
+    @classproperty
+    def __initial__(cls) -> Optional['StateEnum']:
+        """Return the initial state member as annotated via the statesman.InitialState class."""
+        return next(filter(lambda s: isinstance(s.value, InitialState), list(cls)), None)
+    
+    def __init__(self, description: str) -> None:
+        if self.__initial__ and isinstance(description, InitialState):
+            raise ValueError(f"cannot declare more than one initial state: \"{self.__initial__}\" already declared")
 
 class Action(pydantic.BaseModel):
     """An Action is a callable object attached to states and events within a state machine."""
@@ -327,6 +340,9 @@ class StateMachine(pydantic.BaseModel):
             if not issubclass(state_enum, StateEnum):
                 raise TypeError("States class must be a subclass of StateEnum")
             self._states.extend(State.from_enum(state_enum))
+            
+            # Adopt the initial state from the enum
+            state = state if state else state_enum.__initial__
         
         # Handle type hints from __state__
         if not state_enum:
