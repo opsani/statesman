@@ -197,7 +197,7 @@ class State(BaseModel):
     @property
     def actions(self) -> List[Action]:
         """Return a list of entry and exit actions attached to the state."""
-        return super()._actions.copy()
+        return self._actions.copy()
 
     def get_actions(self, type_: Literal[Action.Types.entry, Action.Types.exit]) -> List[Action]:
         """Return a list of all entry or exit actions attached to the state."""

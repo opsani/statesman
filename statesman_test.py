@@ -82,9 +82,9 @@ class TestState:
         return statesman.State(name="Testing")
     
     def test_add_action(self, state: statesman.State) -> None:
-        ...
-        # TODO: implement
-        state.add_action(lambda: 1234, statesman.Action.Types.entry)
+        action = state.add_action(lambda: 1234, statesman.Action.Types.entry)
+        assert action
+        assert state.actions == [action]
     
     def test_add_action_invalid_type(self, state: statesman.State) -> None:
         with pytest.raises(ValueError, match='cannot add state action with type "after": must be "entry" or "exit"'):
