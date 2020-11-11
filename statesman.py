@@ -36,6 +36,7 @@ class classproperty:
     """Decorator that transforms a method with a single cls argument into a property
     that can be accessed directly from the class.
     """
+
     def __init__(self, method=None):
         self.fget = method
 
@@ -46,10 +47,13 @@ class classproperty:
         self.fget = method
         return self
 
+
 ActiveState = Literal["__active__"]
+
 
 class InitialState(str):
     """Declares the initial state in a state machine."""
+
 
 class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
@@ -76,6 +80,7 @@ class StateEnum(enum.Enum):
     def __init__(self, description: str) -> None:
         if self.__initial__ and isinstance(description, InitialState):
             raise ValueError(f"cannot declare more than one initial state: \"{self.__initial__}\" already declared")
+
 
 class Action(pydantic.BaseModel):
     """An Action is a callable object attached to states and events within a state machine."""
@@ -115,7 +120,9 @@ class Action(pydantic.BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+
 Action.update_forward_refs()
+
 
 class BaseModel(pydantic.BaseModel):
     """Provides common functionality for statesman models."""
@@ -224,7 +231,8 @@ class State(BaseModel):
         """Add an entry or exit action to the state."""
         acceptable_types = (Action.Types.entry, Action.Types.exit)
         if type_ not in acceptable_types:
-            raise ValueError(f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
+            raise ValueError(
+                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
         action = Action(callable=callable, type=type_)
         super()._add_action(action)
         return action
@@ -244,6 +252,7 @@ class State(BaseModel):
         - Passing `Action.Types.enter` or `Action.Types.exit` will remove all actions that match the given type.
         """
         return super()._remove_actions(actions)
+
 
 class Event(BaseModel):
     """Event objects model something that happens within a state machine that triggers a state transition.
@@ -280,7 +289,8 @@ class Event(BaseModel):
         """Add a guard, before, on, or after action to the event."""
         acceptable_types = (Action.Types.guard, Action.Types.before, Action.Types.on, Action.Types.after)
         if type_ not in acceptable_types:
-            raise ValueError(f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
+            raise ValueError(
+                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
         action = Action(callable=callable, type=type_)
         super()._add_action(action)
         return action
@@ -331,7 +341,8 @@ class StateMachine(pydantic.BaseModel):
     _states: List[State] = pydantic.PrivateAttr([])
     _events: List[Event] = pydantic.PrivateAttr([])
 
-    def __init__(self, states: List[State] = [], events: List[Event] = [], state: Optional[Union[State, str, StateEnum]] = None) -> None:
+    def __init__(self, states: List[State] = [], events: List[Event] = [],
+                 state: Optional[Union[State, str, StateEnum]] = None) -> None:
         super().__init__()
 
         # Initialize private attributes
@@ -400,7 +411,8 @@ class StateMachine(pydantic.BaseModel):
                 else:
                     target = self.get_state(descriptor.target)
                     if not target:
-                        raise ValueError(f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
+                        raise ValueError(
+                            f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
 
                 source_names = list(filter(lambda s: s is not None, descriptor.source))
                 sources = self.get_states(*source_names)
@@ -584,13 +596,16 @@ class StateMachine(pydantic.BaseModel):
                 raise LookupError(f"event trigger failed: no event was found with the name \"{event}\"")
 
         else:
-            raise TypeError(f"event trigger failed: cannot trigger an event of type \"{event.__class__.__name__}\": {event}")
+            raise TypeError(
+                f"event trigger failed: cannot trigger an event of type \"{event.__class__.__name__}\": {event}")
 
         if self.state not in event_.sources:
             if self.state:
-                raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"")
+                raise RuntimeError(
+                    f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"")
             else:
-                raise RuntimeError(f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions")
+                raise RuntimeError(
+                    f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions")
 
         # Substitute the active state if necessary
         target = self.state if event_.target == State.active() else event_.target
@@ -710,8 +725,8 @@ class StateMachine(pydantic.BaseModel):
         """
 
     class Config:
-        allow_entry = "initial" # TODO: any, forbid, accept...
-        guard_with = "exception" # TODO: warning, silence
+        allow_entry = "initial"  # TODO: any, forbid, accept...
+        guard_with = "exception"  # TODO: warning, silence
 
 
 class Transition(pydantic.BaseModel):
@@ -777,7 +792,7 @@ class Transition(pydantic.BaseModel):
 
     def __init__(self, state_machine: StateMachine, *args, **kwargs) -> None:
         super().__init__(state_machine=state_machine, *args, **kwargs)
-        self.state_machine = state_machine # Ensure we have a reference and not a copy (Pydantic behavior)
+        self.state_machine = state_machine  # Ensure we have a reference and not a copy (Pydantic behavior)
 
     async def __call__(self, *args, **kwargs) -> bool:
         """Execute the transition."""
@@ -893,12 +908,14 @@ class Transition(pydantic.BaseModel):
         """
         return await model._run_actions(type_, transition=self, *self.args, **self.kwargs) if model else None
 
+
 Transition.update_forward_refs()
 Event.update_forward_refs()
 
 StateIdentifier = Union[StateEnum, str]
 Source = Union[None, StateIdentifier, List[StateIdentifier], Type[StateEnum]]
 Target = Union[None, StateIdentifier, ActiveState]
+
 
 class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
@@ -946,6 +963,7 @@ class EventDescriptor(pydantic.BaseModel):
     def __hash__(self):
         return hash(self.name)
 
+
 class ActionDescriptor(pydantic.BaseModel):
     """Describes an action attached to a State or Event."""
     model: Type[BaseModel]
@@ -953,6 +971,7 @@ class ActionDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
     type: Action.Types
     callable: Callable
+
 
 def event(
     description: Optional[str],
@@ -1003,13 +1022,16 @@ def event(
 
     return decorator
 
+
 def enter_state(name: Union[str, StateEnum], description: str = "") -> None:
     """Transform a method into an enter state action."""
     return _state_action(name, Action.Types.entry, description)
 
+
 def exit_state(name: Union[str, StateEnum], description: str = "") -> None:
     """Transform a method into an exit state action."""
     return _state_action(name, Action.Types.exit, description)
+
 
 def _state_action(name: Union[str, StateEnum], type_: Action.Types, description: str = ""):
     def decorator(fn):
@@ -1027,21 +1049,26 @@ def _state_action(name: Union[str, StateEnum], type_: Action.Types, description:
 
     return decorator
 
+
 def guard_event(name: str, description: str = "") -> None:
     """Transform a method into a guard event action."""
     return _event_action(name, Action.Types.guard, description)
+
 
 def before_event(name: str, description: str = "") -> None:
     """Transform a method into a before event action."""
     return _event_action(name, Action.Types.before, description)
 
+
 def on_event(name: str, description: str = "") -> None:
     """Transform a method into an on event action."""
     return _event_action(name, Action.Types.on, description)
 
+
 def after_event(name: str, description: str = "") -> None:
     """Transform a method into an after event action."""
     return _event_action(name, Action.Types.after, description)
+
 
 def _event_action(name: str, type_: Action.Types, description: str = ""):
     def decorator(fn):
@@ -1057,6 +1084,7 @@ def _event_action(name: str, type_: Action.Types, description: str = ""):
         return fn
 
     return decorator
+
 
 def _summarize(
     values: Sequence[str], *, conjunction: str = "and", quote=False, oxford_comma: bool = True
@@ -1079,9 +1107,11 @@ def _summarize(
         delimiter = "," if oxford_comma else ""
         return f"{series}{delimiter} {conjunction} {last_item}"
 
+
 def _quote(values: Sequence[str]) -> List[str]:
     """Return a sequence of strings surrounding each value in double quotes."""
     return list(map(lambda v: f"\"{v}\"", values))
+
 
 def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs) -> Tuple[List[Any], Dict[str, Any]]:
     """Return a tuple of positional and keyword parameters that match a callable signature.
@@ -1132,9 +1162,11 @@ def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs
 
     return matched_args, matched_kwargs
 
+
 async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) -> Any:
     """Call a callable with all parameters that match its signature and return the results."""
-    matched_args, matched_kwargs = _parameters_matching_signature(inspect.Signature.from_callable(callable), *args, **kwargs)
+    matched_args, matched_kwargs = _parameters_matching_signature(
+        inspect.Signature.from_callable(callable), *args, **kwargs)
     if asyncio.iscoroutinefunction(callable):
         return await callable(*matched_args, **matched_kwargs)
     else:
@@ -1143,7 +1175,7 @@ async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) ->
 
 class HistoryMixin(pydantic.BaseModel):
     """A mixin that records all transitions that occur within the state machine."""
-    __private_attributes__ = { "_transitions": pydantic.PrivateAttr([]) }
+    __private_attributes__ = {"_transitions": pydantic.PrivateAttr([])}
 
     async def after_transition(self, transition: Transition) -> None:
         """Append a completed transition to the history."""

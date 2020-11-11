@@ -10,6 +10,7 @@ def _format(task):
         --remove-unused-variables    \
         --in-place ."""
     )
+    task.run("autopep8 --in-place --aggressive --aggressive statesman.py")
 
 
 @invoke.task()
