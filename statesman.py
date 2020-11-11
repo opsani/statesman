@@ -15,17 +15,20 @@ from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequen
 import pydantic
 
 __all__ = [
-    "States",
+    "StateEnum",
     "State",
     "Transition",
     "Event",
     "InitialState",
     "StateMachine",
+    "HistoryMixin",
     "event",
-    "on_state",
     "enter_state",
     "exit_state",
-    "HistoryMixin"
+    "guard_event",
+    "before_event",
+    "on_event",
+    "after_event",
 ]
 
 
@@ -1025,12 +1028,16 @@ def _state_action(name: Union[str, StateEnum], type_: Action.Types, description:
     return decorator
 
 def guard_event(name: str, description: str = "") -> None:
-    """Transform a method into a before event action."""
+    """Transform a method into a guard event action."""
     return _event_action(name, Action.Types.guard, description)
 
 def before_event(name: str, description: str = "") -> None:
     """Transform a method into a before event action."""
     return _event_action(name, Action.Types.before, description)
+
+def on_event(name: str, description: str = "") -> None:
+    """Transform a method into an on event action."""
+    return _event_action(name, Action.Types.on, description)
 
 def after_event(name: str, description: str = "") -> None:
     """Transform a method into an after event action."""

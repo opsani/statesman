@@ -46,7 +46,7 @@ style = "nitpick-style.toml"
 
 [tool.flakehell]
 base = "https://raw.githubusercontent.com/life4/flakehell/master/pyproject.toml"
-exclude = ["README.md", "docs", "tests"]
+exclude = ["README.md", "tasks.py", "statesman_test.py"]
 format = "grouped"
 max_line_length = 120
 show_source = true

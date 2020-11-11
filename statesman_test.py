@@ -14,11 +14,11 @@ builtins.debug = devtools.debug
 pytestmark = pytest.mark.asyncio
 
 class TestBaseModel:
-    @pytest.fixture
+    @pytest.fixture()
     def model(self) -> statesman.BaseModel:
         return statesman.BaseModel()
 
-    @pytest.fixture
+    @pytest.fixture()
     def actions(self) -> List[statesman.Action]:
         return [
             statesman.Action(callable=lambda: 1234, type=statesman.Action.Types.entry),
@@ -43,7 +43,7 @@ class TestBaseModel:
         assert model._actions == []
 
     class TestCollection:
-        @pytest.fixture
+        @pytest.fixture()
         def model(self, actions: List[statesman.Action]) -> statesman.BaseModel:
             model = statesman.BaseModel()
             model._actions = actions.copy()
@@ -75,7 +75,7 @@ class TestState:
         first = "First"
         second = "Second"
 
-    @pytest.fixture
+    @pytest.fixture()
     def state(self) -> statesman.State:
         return statesman.State(name="Testing")
 
@@ -155,7 +155,7 @@ class States(statesman.StateEnum):
     stopped = "Stopped"
 
 class TestStateMachine:
-    @pytest.fixture
+    @pytest.fixture()
     def state_machine(self) -> statesman.StateMachine:
         return statesman.StateMachine(states=statesman.State.from_enum(States))
 
@@ -175,7 +175,7 @@ class TestStateMachine:
         assert list(map(lambda i: i.name, states)) == ['starting', 'running']
 
 class TestTransition:
-    @pytest.fixture
+    @pytest.fixture()
     def transition(self) -> statesman.Transition:
         state_machine = statesman.StateMachine()
         state_machine.add_states(statesman.State.from_enum(States))
@@ -534,7 +534,7 @@ class TestProgrammaticStateMachine:
         assert state_machine.events == []
 
     class TestTrigger:
-        @pytest.fixture
+        @pytest.fixture()
         def state_machine(self) -> statesman.StateMachine:
             state_machine = statesman.StateMachine()
             state_machine.add_states([
@@ -806,7 +806,7 @@ class TestDecoratorStateMachine:
             if transition.event and transition.event.name == "stop":
                 await self.terminate()
 
-    @pytest.fixture
+    @pytest.fixture()
     def state_machine(self) -> statesman.StateMachine:
         return TestDecoratorStateMachine.ProcessLifecycle()
 
