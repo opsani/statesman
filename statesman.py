@@ -10,8 +10,7 @@ import functools
 import inspect
 import types
 import typing
-from typing import (Any, Callable, Dict, List, Literal, Mapping, Optional,
-                    Sequence, Set, Tuple, Type, Union)
+from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import pydantic
 

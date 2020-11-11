@@ -7,7 +7,6 @@ from typing import Any, Dict, Iterator, List, Optional
 import devtools
 import pydantic
 import pytest
-
 import statesman
 
 builtins.debug = devtools.debug
