@@ -11,7 +11,8 @@ def _format(task):
         --remove-unused-variables    \
         --in-place .""",
     )
-    task.run("autopep8 --in-place --aggressive --aggressive statesman.py")
+    task.run("poetry run autopep8 --in-place --aggressive --aggressive statesman.py statesman_test.py")
+    task.run("poetry run pyformat --in-place statesman.py statesman_test.py")
 
 
 @invoke.task()

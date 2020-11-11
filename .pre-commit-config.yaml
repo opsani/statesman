@@ -11,15 +11,6 @@ repos:
     -   id: debug-statements
     -   id: name-tests-test
         exclude: statesman_test.py
--   repo: https://github.com/asottile/add-trailing-comma
-    rev: v2.0.1
-    hooks:
-    -   id: add-trailing-comma
--   repo: https://github.com/andreoliwa/nitpick
-    rev: v0.23.0
-    hooks:
-      - id: nitpick
-        stages: [push]
 -   repo: https://github.com/pycqa/pydocstyle
     rev: 5.1.1
     hooks:
