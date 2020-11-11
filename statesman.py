@@ -10,10 +10,10 @@ import functools
 import inspect
 import types
 import typing
-from typing import Any, Dict, List, Literal, Mapping, Optional, Callable, Set, Sequence, Type, Tuple, Union
+from typing import (Any, Callable, Dict, List, Literal, Mapping, Optional,
+                    Sequence, Set, Tuple, Type, Union)
 
 import pydantic
-
 
 __all__ = [
     "States",
@@ -48,7 +48,6 @@ ActiveState = Literal["__active__"]
 
 class InitialState(str):
     """Declares the initial state in a state machine."""
-    pass
 
 class StateEnum(enum.Enum):
     """An abstract enumeration base class for defining states within a state machine.
@@ -682,7 +681,6 @@ class StateMachine(pydantic.BaseModel):
             args: A list of supplemental positional arguments passed when the transition was triggered.
             kwargs: A dict of supplemental keyword arguments passed when the transition was triggered.
         """
-        pass
     
     async def on_transition(self, transition: 'Transition', *args, **kwargs) -> None:
         """Run on every state change in the state machine.
@@ -697,7 +695,6 @@ class StateMachine(pydantic.BaseModel):
             args: A list of supplemental positional arguments passed when the transition was triggered.
             kwargs: A dict of supplemental keyword arguments passed when the transition was triggered.
         """
-        pass
     
     async def after_transition(self, transition: 'Transition', *args, **kwargs) -> None:
         """Run after every transition in the state machine.
@@ -709,7 +706,6 @@ class StateMachine(pydantic.BaseModel):
             args: A list of supplemental positional arguments passed when the transition was triggered.
             kwargs: A dict of supplemental keyword arguments passed when the transition was triggered.
         """
-        pass
     
     class Config:
         allow_entry = "initial" # TODO: any, forbid, accept...
