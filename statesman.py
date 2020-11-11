@@ -1,4 +1,6 @@
 """Statesman is a modern state machine library."""
+from __future__ import annotations
+
 import asyncio
 import collections
 import contextlib
@@ -8,7 +10,7 @@ import functools
 import inspect
 import types
 import typing
-from typing import AsyncIterator, Any, ClassVar, Dict, List, Literal, Mapping, Optional, Callable, Set, Sequence, Type, Tuple, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Callable, Set, Sequence, Type, Tuple, Union
 
 import pydantic
 
@@ -91,7 +93,7 @@ class Action(pydantic.BaseModel):
     
     callable: Callable
     signature: inspect.Signature
-    type: Optional[Types] = None
+    type: Optional[Action.Types] = None
     
     @pydantic.root_validator(pre=True)
     @classmethod
@@ -112,6 +114,7 @@ class Action(pydantic.BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+Action.update_forward_refs()
 
 class BaseModel(pydantic.BaseModel):
     """Provides common functionality for statesman models."""    
@@ -590,22 +593,29 @@ class StateMachine(pydantic.BaseModel):
         transition = Transition(state_machine=self, event=event_, source=self.state, target=target)
         return await transition(*args, **kwargs)
     
-    async def enter_state(self, state: Union[State, StateEnum, str], *args, **kwargs) -> bool:
-        """Enter a state without triggering an event.
+    async def enter_state(self, state: Union[State, StateEnum, str], *args, type_: Optional[Transition.Types] = None, **kwargs) -> bool:
+        """Transition the state machine into a specific state.
         
         This method can be used to establish an initial state as an alternative to the object initializer,
         which cannot run actions as it is not a coroutine.
         
-        When a state is directly entered, the entry and exit actions are executed on the state machine and the
-        source and target states involved. Directly entering a state outside of establishing an initial state
-        is an atypical operation that should be avoided without very specific motivations as it can lead to
-        inconsistent object state managed via event actions.
+        When a state is entered, a transition is performed to change the current state into the given target state.
+        By default, the type of transition performed is inferred based on the current state of the state machine.
+        If the current state and the desired state differ, an external state transition is executed. If they are the same,
+        then a self state transition is executed. Self state transitions will exit and reenter the current state, triggering
+        all associated actions. The type of transition performed can be overridden via the `type_` argument.
+        
+        Entering a state directly via this method is typically only used to programmatically establish an initial state.
+        Events should be favored over state entry unless you have very specific motivations as transitioning from one state
+        to another in this manner can lead to inconsistent and surprising behavior because you may be forcing the state machine 
+        to change states in a way that is otherwise unreachable.
         
         # TODO: Forbid via a config class attribute?
         
         Args:
-            state: The state to enter.
+            state: The state to enter.            
             args: Supplemental positional arguments to be passed to the transition and triggered actions.
+            type_: The type of Transition to perform. When `None`, the type is inferred.
             kwargs: Supplemental keyword arguments to be passed to the transition and triggered actions.
         
         Returns:
@@ -628,8 +638,11 @@ class StateMachine(pydantic.BaseModel):
         else:
             raise TypeError(f"state entry failed: unexpected value of type \"{state.__class__.__name__}\": {state}")
         
-        # Run a state transition. Since there is no event, only the state enter/exit actions are triggered
-        transition = Transition(state_machine=self, source=self.state, target=state_)
+        # Infer the transition type.
+        type_ = type_ or (Transition.Types.self if self.state == state_ else Transition.Types.external)
+        # if not type_:
+        #     type_ = Transition.Types.internal if self.state == state_ else Transition.Types.external
+        transition = Transition(state_machine=self, source=self.state, target=state_, type=type_)
         return await transition(*args, **kwargs)
     
     ##
@@ -703,28 +716,57 @@ class StateMachine(pydantic.BaseModel):
 class Transition(pydantic.BaseModel):
     """Transition objects model a state change within a state machine.
     
+    The behavior of a transition is dependent upon the current state of the state machine, the source and target
+    states involved in the transition, the event (if any) that triggered the transition, and the type of transition 
+    that is occurring. See the documentation of the `Transition.Types` class for specifics about the types of transitions
+    and how they behave.
+    
     Args:
         state_machine: The state machine in which the transition is occurring.
-        source: 
-        target: ...
-        event: ...
+        source: The state that the state machine is transitioning from. `None` indicates an initial state transition.
+        target: The state that the state machine is transition to.
+        event: The event (if any) that triggered the state transition.
+        type: The type of transition to perform.
     
     Attributes:        
         state_machine: The state machine in which the transition is occurring.
         source: The state of the state machine when the transition started. None indicates an initial state.
         target: The state that the state machine will be in once the transition has finished.
         event: The event that triggered the transition. None indicates that the state was entered directly.
+        type: The type of transition occurring (internal, external, or self).
         created_at: When the transition was created.
         started_at: When the transition started. None if the transition has not been called.
         finished_at: When the transition finished. None if the transition has not been called or is underway.
         cancelled: Whether or not the transition was cancelled by a guard callback or action. None if the transition has not been called or is underway.
         args: Supplemental positional arguments passed to the transition when it was called.
         kwargs: Supplemental keyword arguments passed to the transition when it was called.
-    """    
+    """
+    class Types(enum.Enum):
+        """An enumeration that describes the type of state transition that is occurring.
+        
+        External transitions are the most common type in which the state of the state machine is moved from one state to another.
+        Internal and self transitions occur when the source and target states are the same. In an internal transition, the state
+        is not changed and will not trigger associated exit and entry actions. In a self transition, the state is exited and
+        reentered and will trigger associated exit and entry actions.
+        
+        Internal transitions are commonly used in situations where maintaining the status quo is uninteresting or insignificant in
+        and of itself. Self transitions are used in situations where the transition into the same state represents something meaningful
+        or interesting.
+        
+        Attributes:
+            external: A transition in which the state is changed from one value to another.
+            internal: A transition in which the source and target states are the same but are not exited and reentered during the transition.
+            self: A transition in which the source and target states are the same and are exited and reentered during the transition.
+        """
+        external = "External Transition"
+        internal = "Internal Transition"
+        self = "Self Transition"
+        
     state_machine: StateMachine
     source: Optional[State] = None
     target: State
     event: Optional[Event] = None
+    type: Transition.Types = pydantic.Field(default_factory=lambda: Transition.Types.external)
     created_at: datetime.datetime = pydantic.Field(default_factory=datetime.datetime.now)
     started_at: Optional[datetime.datetime] = None
     finished_at: Optional[datetime.datetime] = None
@@ -769,29 +811,46 @@ class Transition(pydantic.BaseModel):
             await self._run_actions(self.event, Action.Types.before)
                 
             # Switch between states and try to stay consistent. Actions can be lost in failures
-            if not self.is_internal:
-                try:
+            try:
+                if self.type in (Transition.Types.external, Transition.Types.self):
                     await self._run_actions(self.source, Action.Types.exit)
-                    self.state_machine._state = self.target
-                    await _call_with_matching_parameters(self.state_machine.on_transition, self, *args, **kwargs)
-                    await self._run_actions(self.event, Action.Types.on)
+                    
+                self.state_machine._state = self.target
+                await _call_with_matching_parameters(self.state_machine.on_transition, self, *args, **kwargs)
+                await self._run_actions(self.event, Action.Types.on)
+                
+                if self.type in (Transition.Types.external, Transition.Types.self):
                     await self._run_actions(self.target, Action.Types.entry)
-                except Exception:
-                    self.state_machine._state = self.source
-                    raise
+            except Exception:
+                self.state_machine._state = self.source
+                raise
                     
             await self._run_actions(self.event, Action.Types.after)
             await _call_with_matching_parameters(self.state_machine.after_transition, self, *args, **kwargs)
             
             return True
     
-    # TODO: This is actually a self_transition and internal is where target is None
-    # TODO: self transition will call the entry/exit callbacks while internal will not
+    @pydantic.root_validator()
+    @classmethod    
+    def _validate_type(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        type_ = values["type"]        
+        if type_ in (Transition.Types.internal, Transition.Types.self):
+            assert values["target"] == values["source"], "source and target states must be the same for internal or self transitions"
+        elif type_ == Transition.Types.external:
+            assert values["target"] != values["source"], "source and target states cannot be the same for external transitions"
+        else:
+            raise ValueError(f"unknown transition type: \"{type_}\"")
+        
+        return values
+
     @property
-    def is_internal(self) -> bool:
-        """Return a boolean value that indicates if the source and target states are the same."""
+    def is_self(self) -> bool:
+        """Return a boolean value that indicates if the transition is a self transition.
+        
+        In a self transition, the source and target states are the same.
+        """
         return self.source == self.target
-    
+        
     @property
     def is_executing(self) -> bool:
         """Return a boolean value that indicates if the transition is in progress."""
@@ -825,12 +884,15 @@ class Transition(pydantic.BaseModel):
         """
         return await model._run_actions(type_, transition=self, *self.args, **self.kwargs) if model else None
 
+Transition.update_forward_refs()
+
 StateIdentifier = Union[StateEnum, str]
 Source = Union[None, StateIdentifier, List[StateIdentifier], Type[StateEnum]]
 Target = Union[None, StateIdentifier, ActiveState]
 
 class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
+    type: Transition.Types
     source: List[Union[None, StateIdentifier]]
     target: Target
     guard: List[Callable]
@@ -883,11 +945,13 @@ class ActionDescriptor(pydantic.BaseModel):
     
 # TODO: Internal transition: target is blank, doesn't change
 # TODO: A default action without specifying source or target will create a universal internal action for whatever state
+# TODO: do we want internal_transition and self_transition?
 def event(
     description: Optional[str] = None, 
     source: Source = ..., 
     target: Optional[Target] = None,
     *,
+    type: Transition.Types = Transition.Types.external,
     guard: Union[None, Callable, List[Callable]] = None,
     before: Union[None, Callable, List[Callable]] = None, 
     after: Union[None, Callable, List[Callable]] = None,
@@ -900,6 +964,7 @@ def event(
             description=description,
             source=source,
             target=target_,
+            type=type,
             guard=guard,
             before=before,
             after=after,

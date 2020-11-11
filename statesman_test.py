@@ -236,9 +236,14 @@ class TestTransition:
         assert transition.is_executing is False
         await transition(1234, foo="Bar")
         assert called is True # Ensure that our inner assertions actually ran
-        
-    # TODO: Support the arguments: transition? what else?
-    # TODO: Test with garbage args
+    
+    async def test_internal_transition(self, transition: statesman.Transition) -> None:
+        # TODO: Needs to NOT enter and exit but call everything else
+        ...
+    
+    async def test_self_transition(self, transition: statesman.Transition) -> None:
+        # TODO: Needs to enter and exit
+        ...
     
 class TestProgrammaticStateMachine:
     def test_add_state(self) -> None:
@@ -378,15 +383,62 @@ class TestProgrammaticStateMachine:
             assert callback_mock.call_args.args[1]
             assert callback_mock.call_args.kwargs == { "foo": "bar" }
     
-    async def test_doesnt_run_on_callbacks_for_internal_transitions(self, mocker) -> None:
+    async def test_doesnt_run_state_actions_for_internal_transitions(self, mocker) -> None:
         state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
         assert state_machine.state == States.starting
         
         # NOTE: we are already in Starting and entering it again
         with extra(state_machine):
-            callback_mock = mocker.spy(state_machine, "on_transition")
-            await state_machine.enter_state(States.starting, 1234, foo="bar")
-            callback_mock.assert_not_called()
+            state = state_machine.get_state(States.starting)
+            
+            entry_action = mocker.stub(name='entry action')
+            state.add_action(lambda: entry_action(), statesman.Action.Types.entry)
+            exit_action = mocker.stub(name='exit action')
+            state.add_action(lambda: exit_action(), statesman.Action.Types.exit)
+            
+            on_callback_mock = mocker.spy(state_machine, "on_transition")
+            await state_machine.enter_state(States.starting, 1234, foo="bar", type_=statesman.Transition.Types.internal)
+            on_callback_mock.assert_called_once()
+            
+            entry_action.assert_not_called()
+            exit_action.assert_not_called()
+    
+    async def test_runs_state_actions_for_self_transitions(self, mocker) -> None:
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
+        assert state_machine.state == States.starting
+        
+        # NOTE: we are already in Starting and entering it again
+        with extra(state_machine):
+            state = state_machine.get_state(States.starting)
+            
+            entry_action = mocker.stub(name='entry action')
+            state.add_action(lambda: entry_action(), statesman.Action.Types.entry)
+            exit_action = mocker.stub(name='exit action')
+            state.add_action(lambda: exit_action(), statesman.Action.Types.exit)
+            
+            on_callback_mock = mocker.spy(state_machine, "on_transition")
+            await state_machine.enter_state(States.starting, 1234, foo="bar", type_=statesman.Transition.Types.self)
+            on_callback_mock.assert_called_once()
+            
+            entry_action.assert_called_once()
+            exit_action.assert_called_once()
+    
+    @pytest.mark.parametrize(
+        ("target_state", "transition_type", "error_message"),
+        [
+            (States.starting, statesman.Transition.Types.external, "source and target states cannot be the same for external transitions"),  
+            (States.running, statesman.Transition.Types.internal, "source and target states must be the same for internal or self transitions"),  
+            (States.stopping, statesman.Transition.Types.self, "source and target states must be the same for internal or self transitions"), 
+        ]
+    )  
+    async def test_raises_if_states_and_transition_type_are_inconsistent(
+        self, target_state: statesman.StateEnum, transition_type: statesman.Transition.Types, error_message: str
+    ) -> None:
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
+        assert state_machine.state == States.starting
+        
+        with pytest.raises(pydantic.ValidationError, match=error_message):
+            await state_machine.enter_state(target_state, type_=transition_type)
     
     def test_add_event_fails_if_existing(self) -> None:
         state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
@@ -656,16 +708,6 @@ class TestDecoratorStateMachine:
         assert len(state_machine.states) == 4
         assert state_machine.states[0] == TestMachine.States.one
         assert state_machine.state is None
-        
-    def test_overrides(self):        
-        class TestMachine(statesman.StateMachine):
-            _state: Optional[States] = States.stopping
-            _initial = pydantic.PrivateAttr(States.starting)
-            _state_enum: Optional[States] = States.starting
-            foo = 1234
-        
-        state_machine = TestMachine()
-        debug(state_machine, state_machine._state, state_machine._initial, state_machine._state_enum, TestMachine.states, state_machine.states)
 
     class ProcessLifecycle(statesman.StateMachine):
         class States(statesman.StateEnum):
