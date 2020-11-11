@@ -33,6 +33,7 @@ pydocstyle = "^5.1.1"
 flake8-commas = "^2.0.0"
 flake8-quotes = "^3.2.0"
 autopep8 = "^1.5.4"
+add-trailing-comma = "^2.0.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

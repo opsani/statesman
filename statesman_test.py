@@ -248,7 +248,7 @@ class TestTransition:
             source=stopping,
             target=stopping,
             state=States.stopping,
-            type=statesman.Transition.Types.internal
+            type=statesman.Transition.Types.internal,
         )
         assert transition.state_machine.state == stopping
 
@@ -276,7 +276,7 @@ class TestTransition:
             source=stopping,
             target=stopping,
             state=States.stopping,
-            type=statesman.Transition.Types.self
+            type=statesman.Transition.Types.self,
         )
         assert transition.state_machine.state == stopping
 
@@ -298,8 +298,8 @@ class TestProgrammaticStateMachine:
         state_machine = statesman.StateMachine()
         state_machine.add_state(
             statesman.State(
-                name=States.starting
-            )
+                name=States.starting,
+            ),
         )
         assert len(state_machine.states) == 1
         state = state_machine.states[0]
@@ -309,16 +309,16 @@ class TestProgrammaticStateMachine:
         state_machine = statesman.StateMachine()
         state_machine.add_state(
             statesman.State(
-                name=States.starting
-            )
+                name=States.starting,
+            ),
         )
         assert len(state_machine.states) == 1
 
         with pytest.raises(ValueError, match='a state named "starting" already exists'):
             state_machine.add_state(
                 statesman.State(
-                    name=States.starting
-                )
+                    name=States.starting,
+                ),
             )
 
     def test_add_states(self) -> None:
@@ -334,11 +334,11 @@ class TestProgrammaticStateMachine:
         state_machine.add_states([
             statesman.State(
                 name=States.starting,
-                description=States.starting
+                description=States.starting,
             ),
             statesman.State(
-                name=States.stopping
-            )
+                name=States.stopping,
+            ),
         ])
         assert len(state_machine.states) == 2
         state1, state2 = state_machine.states
@@ -404,7 +404,7 @@ class TestProgrammaticStateMachine:
     async def test_create_enter_specific_state(self) -> None:
         state_machine = await statesman.StateMachine.create(
             states=statesman.State.from_enum(States),
-            state=States.stopping
+            state=States.stopping,
         )
         assert state_machine.state == States.stopping
 
@@ -415,7 +415,7 @@ class TestProgrammaticStateMachine:
             "guard_transition",
             "before_transition",
             "on_transition",
-            "after_transition"
+            "after_transition",
         ],
     )
     async def test_enter_state_with_args(self, callback, mocker) -> None:
@@ -477,7 +477,7 @@ class TestProgrammaticStateMachine:
             (States.starting, statesman.Transition.Types.external, "source and target states cannot be the same for external transitions"),
             (States.running, statesman.Transition.Types.internal, "source and target states must be the same for internal or self transitions"),
             (States.stopping, statesman.Transition.Types.self, "source and target states must be the same for internal or self transitions"),
-        ]
+        ],
     )
     async def test_raises_if_states_and_transition_type_are_inconsistent(
         self, target_state: statesman.StateEnum, transition_type: statesman.Transition.Types, error_message: str
@@ -495,16 +495,16 @@ class TestProgrammaticStateMachine:
             statesman.Event(
                 name="finish",
                 sources=[state],
-                target=state
-            )
+                target=state,
+            ),
         )
         with pytest.raises(ValueError, match='an event named "finish" already exists'):
             state_machine.add_event(
                 statesman.Event(
                     name="finish",
                     sources=[state],
-                    target=state
-                )
+                    target=state,
+                ),
             )
 
     def test_add_event_fails_with_unknown_state(self) -> None:
@@ -515,8 +515,8 @@ class TestProgrammaticStateMachine:
                 statesman.Event(
                     name="finish",
                     sources=[state],
-                    target=state
-                )
+                    target=state,
+                ),
             )
 
     def test_removing_state_clears_all_referencing_events(self) -> None:
@@ -525,7 +525,7 @@ class TestProgrammaticStateMachine:
         event = statesman.Event(
             name="finish",
             sources=[state],
-            target=state
+            target=state,
         )
         state_machine.add_event(event)
         assert state_machine.events == [event]
@@ -539,18 +539,18 @@ class TestProgrammaticStateMachine:
             state_machine = statesman.StateMachine()
             state_machine.add_states([
                 statesman.State(
-                    name=States.starting
+                    name=States.starting,
                 ),
                 statesman.State(
-                    name=States.stopping
-                )
+                    name=States.stopping,
+                ),
             ])
             state_machine.add_event(
                 statesman.Event(
                     name="finish",
                     sources=state_machine.get_states(States.starting, States.running),
-                    target=state_machine.get_state(States.stopping)
-                )
+                    target=state_machine.get_state(States.stopping),
+                ),
             )
             return state_machine
 
@@ -606,7 +606,7 @@ class TestProgrammaticStateMachine:
             invalid_event = statesman.Event(
                 name="invalid",
                 sources=state_machine.states,
-                target=state_machine.get_state(States.stopping)
+                target=state_machine.get_state(States.stopping),
             )
             await state_machine.enter_state(States.starting)
             with pytest.raises(TypeError, match="event trigger failed: cannot trigger an event of type \"int\": 1234"):
@@ -876,7 +876,7 @@ class TestDecoratorStateMachine:
             'Shutting down pid 31337 (command="ls -al")',
             'Terminated pid 31337 ("ls -al")',
             '_on_stop triggered',
-            '_terminated'
+            '_terminated',
         ]
 
         # Let the runloop cycle
@@ -915,7 +915,7 @@ class TestInitialState:
 
 @contextlib.contextmanager
 def extra(
-    obj: pydantic.BaseModel, extra: pydantic.Extra = pydantic.Extra.allow
+    obj: pydantic.BaseModel, extra: pydantic.Extra = pydantic.Extra.allow,
 ) -> Iterator[pydantic.BaseModel]:
     """Temporarily override the value of the `extra` setting on a Pydantic object.
 
@@ -933,7 +933,7 @@ async def test_matching_signature_overlapping_params() -> None:
     def some_function(transition: str, *args, **kwargs) -> None:
         ...
 
-    args = ("whatever", )
+    args = ("whatever",)
     kwargs = {"transition": "foo"}
 
     await statesman._call_with_matching_parameters(some_function, *args, **kwargs)

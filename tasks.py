@@ -4,11 +4,12 @@ import invoke
 @invoke.task(name="format")
 def _format(task):
     task.run("poetry run isort .")
-    task.run("""poetry run autoflake --recursive \
+    task.run(
+        """poetry run autoflake --recursive \
         --ignore-init-module-imports \
         --remove-all-unused-imports  \
         --remove-unused-variables    \
-        --in-place ."""
+        --in-place .""",
     )
     task.run("autopep8 --in-place --aggressive --aggressive statesman.py")
 

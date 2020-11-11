@@ -232,7 +232,8 @@ class State(BaseModel):
         acceptable_types = (Action.Types.entry, Action.Types.exit)
         if type_ not in acceptable_types:
             raise ValueError(
-                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
+                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}",
+            )
         action = Action(callable=callable, type=type_)
         super()._add_action(action)
         return action
@@ -242,7 +243,7 @@ class State(BaseModel):
         return super()._remove_action(action)
 
     def remove_actions(
-        self, actions: Union[None, List[Action], Literal[Action.Types.entry, Action.Types.exit]] = None
+        self, actions: Union[None, List[Action], Literal[Action.Types.entry, Action.Types.exit]] = None,
     ) -> None:
         """Remove actions that are attached to the state.
 
@@ -276,7 +277,7 @@ class Event(BaseModel):
         return self._actions.copy()
 
     def get_actions(
-        self, type_: Literal[Action.Types.guard, Action.Types.before, Action.Types.after]
+        self, type_: Literal[Action.Types.guard, Action.Types.before, Action.Types.after],
     ) -> List[Action]:
         """Return a list of all guard, before, or after actions attached to the event."""
         return super()._get_actions(type_)
@@ -284,13 +285,14 @@ class Event(BaseModel):
     def add_action(
         self,
         callable: Callable,
-        type_: Literal[Action.Types.guard, Action.Types.before, Action.Types.on, Action.Types.after]
+        type_: Literal[Action.Types.guard, Action.Types.before, Action.Types.on, Action.Types.after],
     ) -> Action:
         """Add a guard, before, on, or after action to the event."""
         acceptable_types = (Action.Types.guard, Action.Types.before, Action.Types.on, Action.Types.after)
         if type_ not in acceptable_types:
             raise ValueError(
-                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}")
+                f"cannot add state action with type \"{type_}\": must be {_summarize(acceptable_types, conjunction='or', quote=True)}",
+            )
         action = Action(callable=callable, type=type_)
         super()._add_action(action)
         return action
@@ -300,7 +302,7 @@ class Event(BaseModel):
         return super()._remove_action(action)
 
     def remove_actions(
-        self, actions: Union[None, List[Action], Literal[Action.Types.entry, Action.Types.exit]] = None
+        self, actions: Union[None, List[Action], Literal[Action.Types.entry, Action.Types.exit]] = None,
     ) -> None:
         """Remove actions that are attached to the state.
 
@@ -341,8 +343,10 @@ class StateMachine(pydantic.BaseModel):
     _states: List[State] = pydantic.PrivateAttr([])
     _events: List[Event] = pydantic.PrivateAttr([])
 
-    def __init__(self, states: List[State] = [], events: List[Event] = [],
-                 state: Optional[Union[State, str, StateEnum]] = None) -> None:
+    def __init__(
+        self, states: List[State] = [], events: List[Event] = [],
+        state: Optional[Union[State, str, StateEnum]] = None,
+    ) -> None:
         super().__init__()
 
         # Initialize private attributes
@@ -412,7 +416,8 @@ class StateMachine(pydantic.BaseModel):
                     target = self.get_state(descriptor.target)
                     if not target:
                         raise ValueError(
-                            f"event creation failed: target state \"{descriptor.target}\" is not in the state machine")
+                            f"event creation failed: target state \"{descriptor.target}\" is not in the state machine",
+                        )
 
                 source_names = list(filter(lambda s: s is not None, descriptor.source))
                 sources = self.get_states(*source_names)
@@ -436,7 +441,7 @@ class StateMachine(pydantic.BaseModel):
                     for callable in callables:
                         event.add_action(
                             types.MethodType(callable, self),
-                            type_
+                            type_,
                         )
                         self.add_event(event)
 
@@ -455,7 +460,7 @@ class StateMachine(pydantic.BaseModel):
                 # Create a bound method and attach the action
                 obj.add_action(
                     types.MethodType(descriptor.callable, self),
-                    descriptor.type
+                    descriptor.type,
                 )
 
     @classmethod
@@ -597,15 +602,18 @@ class StateMachine(pydantic.BaseModel):
 
         else:
             raise TypeError(
-                f"event trigger failed: cannot trigger an event of type \"{event.__class__.__name__}\": {event}")
+                f"event trigger failed: cannot trigger an event of type \"{event.__class__.__name__}\": {event}",
+            )
 
         if self.state not in event_.sources:
             if self.state:
                 raise RuntimeError(
-                    f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"")
+                    f"event trigger failed: the \"{event_.name}\" event cannot be triggered from the current state of \"{self.state.name}\"",
+                )
             else:
                 raise RuntimeError(
-                    f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions")
+                    f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions",
+                )
 
         # Substitute the active state if necessary
         target = self.state if event_.target == State.active() else event_.target
@@ -1009,7 +1017,7 @@ def event(
             guard=guard,
             before=before,
             after=after,
-            on=fn
+            on=fn,
         )
 
         @functools.wraps(fn)
@@ -1041,7 +1049,7 @@ def _state_action(name: Union[str, StateEnum], type_: Action.Types, description:
             name=name_,
             description=description,
             type=type_,
-            callable=fn
+            callable=fn,
         )
 
         fn.__action_descriptor__ = descriptor
@@ -1077,7 +1085,7 @@ def _event_action(name: str, type_: Action.Types, description: str = ""):
             name=name,
             description=description,
             type=type_,
-            callable=fn
+            callable=fn,
         )
 
         fn.__action_descriptor__ = descriptor
@@ -1122,12 +1130,12 @@ def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs
     insufficient for satisfying the signature but will not contain extraneous non-matching parameters.
     """
     parameters: Mapping[
-        str, inspect.Parameter
+        str, inspect.Parameter,
     ] = dict(
         filter(
             lambda item: item[0] not in {"self", "cls"},
-            signature.parameters.items()
-        )
+            signature.parameters.items(),
+        ),
     )
 
     args_copy, kwargs_copy = collections.deque(args), kwargs.copy()
@@ -1166,7 +1174,8 @@ def _parameters_matching_signature(signature: inspect.Signature, *args, **kwargs
 async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) -> Any:
     """Call a callable with all parameters that match its signature and return the results."""
     matched_args, matched_kwargs = _parameters_matching_signature(
-        inspect.Signature.from_callable(callable), *args, **kwargs)
+        inspect.Signature.from_callable(callable), *args, **kwargs
+    )
     if asyncio.iscoroutinefunction(callable):
         return await callable(*matched_args, **matched_kwargs)
     else:
