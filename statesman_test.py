@@ -237,13 +237,61 @@ class TestTransition:
         await transition(1234, foo="Bar")
         assert called is True # Ensure that our inner assertions actually ran
     
-    async def test_internal_transition(self, transition: statesman.Transition) -> None:
-        # TODO: Needs to NOT enter and exit but call everything else
-        ...
+    async def test_internal_transition(self, mocker) -> None:
+        state_machine = statesman.StateMachine()
+        state_machine.add_states(statesman.State.from_enum(States))
+        stopping = state_machine.get_state(States.stopping)
+        await state_machine.enter_state(stopping)
+        
+        transition = statesman.Transition(
+            state_machine=state_machine, 
+            source=stopping,
+            target=stopping, 
+            state=States.stopping, 
+            type=statesman.Transition.Types.internal
+        )
+        assert transition.state_machine.state == stopping
+        
+        entry_stub = mocker.stub(name='entering stopping')
+        exit_stub = mocker.stub(name='exiting stopping')
+        entry = lambda: entry_stub()
+        exit = lambda: exit_stub()
+        
+        stopping.add_action(entry, statesman.Action.Types.entry)
+        stopping.add_action(exit, statesman.Action.Types.exit)
+        
+        await transition()
+        
+        entry_stub.assert_not_called()
+        exit_stub.assert_not_called()
     
-    async def test_self_transition(self, transition: statesman.Transition) -> None:
-        # TODO: Needs to enter and exit
-        ...
+    async def test_self_transition(self, mocker) -> None:
+        state_machine = statesman.StateMachine()
+        state_machine.add_states(statesman.State.from_enum(States))
+        stopping = state_machine.get_state(States.stopping)
+        await state_machine.enter_state(stopping)
+        
+        transition = statesman.Transition(
+            state_machine=state_machine, 
+            source=stopping,
+            target=stopping, 
+            state=States.stopping, 
+            type=statesman.Transition.Types.self
+        )
+        assert transition.state_machine.state == stopping
+        
+        entry_stub = mocker.stub(name='entering stopping')
+        exit_stub = mocker.stub(name='exiting stopping')
+        entry = lambda: entry_stub()
+        exit = lambda: exit_stub()
+        
+        stopping.add_action(entry, statesman.Action.Types.entry)
+        stopping.add_action(exit, statesman.Action.Types.exit)
+        
+        await transition()
+        
+        entry_stub.assert_called_once()
+        exit_stub.assert_called_once()
     
 class TestProgrammaticStateMachine:
     def test_add_state(self) -> None:
