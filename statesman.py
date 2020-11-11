@@ -251,12 +251,14 @@ class Event(BaseModel):
         name: A unique name of the event within the state machine.
         description: An optional description of the event.
         sources: A list of states that the event can be triggered from. The inclusion of `None` denotes an initialization event.
-        target: The state that the state machine will transition into at the completion of the event. When `...`, the states does not change.
+        target: The state that the state machine will transition into at the completion of the event.
+        transition_type: An optional type specifying how the transition triggered by the event should be performed.
     """
     name: str
     description: Optional[str] = None
     sources: List[Union[None, State]]
     target: State
+    transition_type: Optional['Transition.Types']
     
     @property
     def actions(self) -> List[Action]:
@@ -305,6 +307,7 @@ class Event(BaseModel):
     
     def __hash__(self):
         return hash(self.name)
+
 
 class StateMachine(pydantic.BaseModel):
     """StateMachine objects model state machines comprised of states, events, and associated actions.
@@ -408,6 +411,7 @@ class StateMachine(pydantic.BaseModel):
                     description=descriptor.description,
                     sources=sources,
                     target=target,
+                    transition_type=descriptor.transition_type,
                 )
                 
                 # Create bound methods and attach them as actions
@@ -422,6 +426,7 @@ class StateMachine(pydantic.BaseModel):
                             type_
                         )
                         self.add_event(event)
+                        
             elif descriptor := getattr(method, "__action_descriptor__", None):
                 if descriptor.model == State:
                     obj = self.get_state(descriptor.name)
@@ -640,8 +645,6 @@ class StateMachine(pydantic.BaseModel):
         
         # Infer the transition type.
         type_ = type_ or (Transition.Types.self if self.state == state_ else Transition.Types.external)
-        # if not type_:
-        #     type_ = Transition.Types.internal if self.state == state_ else Transition.Types.external
         transition = Transition(state_machine=self, source=self.state, target=state_, type=type_)
         return await transition(*args, **kwargs)
     
@@ -766,7 +769,7 @@ class Transition(pydantic.BaseModel):
     source: Optional[State] = None
     target: State
     event: Optional[Event] = None
-    type: Transition.Types = pydantic.Field(default_factory=lambda: Transition.Types.external)
+    type: Transition.Types
     created_at: datetime.datetime = pydantic.Field(default_factory=datetime.datetime.now)
     started_at: Optional[datetime.datetime] = None
     finished_at: Optional[datetime.datetime] = None
@@ -794,7 +797,7 @@ class Transition(pydantic.BaseModel):
                     raise AssertionError(f"transition cancelled by guard_transition callback")
             except AssertionError:
                 self.cancelled = True
-                return False            
+                return False
             await _call_with_matching_parameters(self.state_machine.before_transition, self, *args, **kwargs)
 
             try:
@@ -821,6 +824,7 @@ class Transition(pydantic.BaseModel):
                 
                 if self.type in (Transition.Types.external, Transition.Types.self):
                     await self._run_actions(self.target, Action.Types.entry)
+                    
             except Exception:
                 self.state_machine._state = self.source
                 raise
@@ -830,10 +834,25 @@ class Transition(pydantic.BaseModel):
             
             return True
     
+    @pydantic.root_validator(pre=True)
+    @classmethod
+    def _set_default_type_from_event(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        type_ = values.get("type", None)
+        event = values.get("event", None)
+        
+        if type_ is None and event is not None:
+            type_ = event.transition_type or Transition.Types.external
+        else:
+            type_ = Transition.Types.external
+        
+        values.setdefault('type', type_)
+        
+        return values
+        
     @pydantic.root_validator()
-    @classmethod    
+    @classmethod
     def _validate_type(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        type_ = values["type"]        
+        type_ = values["type"]
         if type_ in (Transition.Types.internal, Transition.Types.self):
             assert values["target"] == values["source"], "source and target states must be the same for internal or self transitions"
         elif type_ == Transition.Types.external:
@@ -842,14 +861,6 @@ class Transition(pydantic.BaseModel):
             raise ValueError(f"unknown transition type: \"{type_}\"")
         
         return values
-
-    @property
-    def is_self(self) -> bool:
-        """Return a boolean value that indicates if the transition is a self transition.
-        
-        In a self transition, the source and target states are the same.
-        """
-        return self.source == self.target
         
     @property
     def is_executing(self) -> bool:
@@ -885,6 +896,7 @@ class Transition(pydantic.BaseModel):
         return await model._run_actions(type_, transition=self, *self.args, **self.kwargs) if model else None
 
 Transition.update_forward_refs()
+Event.update_forward_refs()
 
 StateIdentifier = Union[StateEnum, str]
 Source = Union[None, StateIdentifier, List[StateIdentifier], Type[StateEnum]]
@@ -892,7 +904,7 @@ Target = Union[None, StateIdentifier, ActiveState]
 
 class EventDescriptor(pydantic.BaseModel):
     description: Optional[str] = None
-    type: Transition.Types
+    transition_type: Optional[Transition.Types] = None
     source: List[Union[None, StateIdentifier]]
     target: Target
     guard: List[Callable]
@@ -937,34 +949,46 @@ class EventDescriptor(pydantic.BaseModel):
         return hash(self.name)
 
 class ActionDescriptor(pydantic.BaseModel):
+    """Describes an action attached to a State or Event."""
     model: Type[BaseModel]
     name: str
     description: Optional[str] = None
     type: Action.Types
     callable: Callable
-    
-# TODO: Internal transition: target is blank, doesn't change
-# TODO: A default action without specifying source or target will create a universal internal action for whatever state
-# TODO: do we want internal_transition and self_transition?
+
 def event(
-    description: Optional[str] = None, 
-    source: Source = ..., 
-    target: Optional[Target] = None,
-    *,
-    type: Transition.Types = Transition.Types.external,
+    description: Optional[str], 
+    source: Source, 
+    target: Target,
+    *,    
     guard: Union[None, Callable, List[Callable]] = None,
     before: Union[None, Callable, List[Callable]] = None, 
     after: Union[None, Callable, List[Callable]] = None,
+    transition_type: Optional[Transition.Types] = None,
     **kwargs
 ) -> None:
-    """Transform a method into a state machine event."""      
+    """Transform a method into a state machine event.
+    
+    The original method is attached to the newly created event as an on action.
+    
+    The decorated function must be a method on a subclass of `StateMachine`.
+    
+    Args:
+        description: An optional description of the event.
+        source: The state or states that the event can be triggered from. `None` indicates an initial state transition.
+        target: The state that the state machine will transition into at the completion of the transition.        
+        guard: An optional list of callables to attach as guard actions to the newly created event.
+        before: An optional list of callables to attach as before actions to the newly created event.
+        after: An optional list of callables to attach as after actions to the newly created event.
+        transition_type: The type of transition to perform when the event is triggered. When `None`, the type is inferred.
+    """
     def decorator(fn):
         target_ = target.name if isinstance(target, StateEnum) else target
         descriptor = EventDescriptor(
             description=description,
             source=source,
             target=target_,
-            type=type,
+            transition_type=transition_type,
             guard=guard,
             before=before,
             after=after,

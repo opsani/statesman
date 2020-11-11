@@ -742,6 +742,10 @@ class TestDecoratorStateMachine:
             self.command = None
             self.pid = None
         
+        @statesman.event("Halt", source=States.stopped, target=States.stopped, transition_type=statesman.Transition.Types.self)
+        async def halt(self) -> None:
+            self.logs.append(f"Halted")
+        
         @statesman.enter_state(States.stopped)
         async def _on_stop(self) -> None:
             self.logs.append(f"_on_stop triggered")
@@ -783,6 +787,27 @@ class TestDecoratorStateMachine:
             callback_mock.assert_called_once()
             assert 31337 in callback_mock.call_args.args
             assert { "this": "That" } == callback_mock.call_args.kwargs
+    
+    async def test_self_transition(self, state_machine: statesman.StateMachine, mocker) -> None:
+        await state_machine.enter_state(States.stopped)
+        
+        state = state_machine.get_state(States.stopped)
+        assert state_machine.state == state
+        
+        event = state_machine.get_event("halt")
+        assert event.transition_type == statesman.Transition.Types.self
+        
+        with extra(state_machine):                        
+            entry_stub = mocker.stub(name='entering halting')
+            exit_stub = mocker.stub(name='exiting halting')
+            entry = lambda: entry_stub()
+            exit = lambda: exit_stub()
+            state.add_action(entry, statesman.Action.Types.entry)
+            state.add_action(exit, statesman.Action.Types.exit)
+            
+            await state_machine.halt()
+            entry_stub.assert_called_once()
+            exit_stub.assert_called_once()
     
     async def test_process_lifecycle(self, state_machine: statesman.StateMachine, mocker) -> None:
         assert state_machine.pid is None
