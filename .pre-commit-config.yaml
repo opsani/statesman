@@ -1,0 +1,29 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.2.0
+    hooks:
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+    -   id: check-docstring-first
+    -   id: check-yaml
+        args: [--allow-multiple-documents]
+    -   id: check-json
+    -   id: debug-statements
+    -   id: name-tests-test
+        exclude: statesman_test.py
+-   repo: https://github.com/andreoliwa/nitpick
+    rev: v0.23.0
+    hooks:
+      - id: nitpick
+        stages: [push]
+-   repo: https://github.com/pycqa/pydocstyle
+    rev: 5.1.1
+    hooks:
+    -   id: pydocstyle
+        exclude: statesman_test.py
+        stages: [manual]
+-   repo: https://github.com/johnfraney/flake8-markdown
+    rev: v0.2.0
+    hooks:
+    -   id: flake8-markdown
+        exclude: docs

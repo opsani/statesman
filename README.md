@@ -30,7 +30,9 @@ how state is to be managed going forward.
 So... what's it look like? Glad you asked.
 
 ```python
+from typing import Optional, List
 import statesman
+
 
 class ProcessLifecycle(statesman.StateMachine):
     class States(statesman.StateEnum):
@@ -49,7 +51,7 @@ class ProcessLifecycle(statesman.StateMachine):
     async def start(self, command: str) -> None:
         self.command = command
         self.pid = 31337
-        self.logs.clear() # Flush logs between runs
+        self.logs.clear()  # Flush logs between runs
 
     @statesman.event("Mark the process as running", source=States.starting, target=States.running)
     async def run(self, transition: statesman.Transition) -> None:
@@ -77,31 +79,33 @@ class ProcessLifecycle(statesman.StateMachine):
         if transition.event and transition.event.name == "stop":
             await self.terminate()
 
-# Let's play.
-state_machine = ProcessLifecycle()
-await state_machine.start("ls -al")
-assert state_machine.command == "ls -al"
-assert state_machine.pid == 31337
-assert state_machine.state == States.starting
 
-await state_machine.run()
-assert state_machine.logs == ['Process pid 31337 is now running (command="ls -al")']
+async def _examples():
+    # Let's play.
+    state_machine = ProcessLifecycle()
+    await state_machine.start("ls -al")
+    assert state_machine.command == "ls -al"
+    assert state_machine.pid == 31337
+    assert state_machine.state == ProcessLifecycle.States.starting
 
-await state_machine.stop()
-assert state_machine.logs == [
-    'Process pid 31337 is now running (command="ls -al")',
-    'Shutting down pid 31337 (command="ls -al")',
-    'Terminated pid 31337 ("ls -al")',
-]
+    await state_machine.run()
+    assert state_machine.logs == ['Process pid 31337 is now running (command="ls -al")']
 
-# Or start in a specific state
-state_machine = ProcessLifecycle(state=States.running)
+    await state_machine.stop()
+    assert state_machine.logs == [
+        'Process pid 31337 is now running (command="ls -al")',
+        'Shutting down pid 31337 (command="ls -al")',
+        'Terminated pid 31337 ("ls -al")',
+    ]
 
-# Transition to a specific state
-await state_machine.enter_state(States.stopping)
+    # Or start in a specific state
+    state_machine = ProcessLifecycle(state=ProcessLifecycle.States.running)
 
-# Trigger an event
-await state_machine.trigger("stop", key="value")
+    # Transition to a specific state
+    await state_machine.enter_state(ProcessLifecycle.States.stopping)
+
+    # Trigger an event
+    await state_machine.trigger("stop", key="value")
 ```
 
 States are defined as Python enum classes. The name of the enum item defines a

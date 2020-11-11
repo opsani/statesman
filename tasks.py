@@ -11,13 +11,11 @@ def _format(task):
         --in-place ."""
     )
 
-
-@invoke.task
+@invoke.task()
 async def test(task):
     await task.run("poetry run pytest --cov=statesman --cov-report=term-missing:skip-covered --cov-config=setup.cfg .", asynchronous=True)
 
-
-@invoke.task
+@invoke.task()
 def typecheck(task):
 	task.run("poetry run mypy . || true")
 
@@ -28,4 +26,8 @@ def lint_docs(task):
 @invoke.task(lint_docs)
 def lint(task):
 	task.run("poetry run flakehell lint --count")
- 
+
+@invoke.task(name="pre-commit")
+def pre_commit(task):
+    task.run("poetry run pre-commit install")
+    task.run("poetry run pre-commit run --all-files")
