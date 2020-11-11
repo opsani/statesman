@@ -12,8 +12,8 @@ def _format(task):
     )
 
 @invoke.task()
-async def test(task):
-    await task.run("poetry run pytest --cov=statesman --cov-report=term-missing:skip-covered --cov-config=setup.cfg .", asynchronous=True)
+def test(task):
+    task.run("poetry run pytest --cov=statesman --cov-report=term-missing:skip-covered --cov-config=setup.cfg .")
 
 @invoke.task()
 def typecheck(task):
