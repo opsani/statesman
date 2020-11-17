@@ -662,13 +662,13 @@ class StateMachine(pydantic.BaseModel):
         success = await transition(*args, **kwargs)
 
         return_type_ = return_type or event_.return_type
+        scalar = transition.results[0] if transition.succeeded and transition.results else None
         if return_type_ == Event.ReturnType.bool:
             return success
         elif return_type_ == Event.ReturnType.scalar:
-            return transition.results[0] if len(transition.results) else None
+            return scalar
         elif return_type_ == Event.ReturnType.tuple:
-            value = transition.results[0] if len(transition.results) else None
-            return (success, value)
+            return (success, scalar)
         elif return_type_ == Event.ReturnType.list:
             return transition.results
         elif return_type_ == Event.ReturnType.transition:
