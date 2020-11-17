@@ -519,6 +519,8 @@ class StateMachine(pydantic.BaseModel):
         Removing a state implicitly removes all events that reference
         the state as a source or target.
         """
+        if state == State.active():
+            raise ValueError(f"cannot remove the active State")
         events = list(filter(lambda event: state in event.states, self.events))
         self.remove_events(events)
         self._states.remove(state)
@@ -557,7 +559,7 @@ class StateMachine(pydantic.BaseModel):
         if self.get_event(event.name):
             raise ValueError(f"an event named \"{event.name}\" already exists")
 
-        if missing := event.states - set(self.states):
+        if missing := (event.states - set(self.states) - {State.active()}):
             names = _summarize(list(map(lambda s: s.name, missing)), quote=True)
             raise ValueError(f'cannot add an event that references unknown states: {names}')
         self._events.append(event)

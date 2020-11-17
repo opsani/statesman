@@ -536,6 +536,21 @@ class TestProgrammaticStateMachine:
                 ),
             )
 
+    def test_add_event_allows_active_sentinel_state(self) -> None:
+        state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
+        state_machine.add_event(
+            statesman.Event(
+                name='finish',
+                sources=state_machine.states,
+                target=statesman.State.active(),
+            ),
+        )
+
+    def test_cant_remove_active_state(self) -> None:
+        state_machine = statesman.StateMachine()
+        with pytest.raises(ValueError, match='cannot remove the active State'):
+            state_machine.remove_state(statesman.State.active())
+
     def test_removing_state_clears_all_referencing_events(self) -> None:
         state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
         state = state_machine.states[0]
@@ -814,6 +829,10 @@ class TestDecoratorStateMachine:
                          transition_type=statesman.Transition.Types.self)
         async def halt(self) -> None:
             self.logs.append(f'Halted')
+
+        @statesman.event('Reset', States.__any__, States.__active__)
+        async def _reset(self) -> None:
+            ...
 
         @statesman.enter_state(States.stopped)
         async def _on_stop(self) -> None:
