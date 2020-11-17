@@ -481,11 +481,9 @@ class StateMachine(pydantic.BaseModel):
         *args,
         **kwargs
     ) -> 'StateMachine':
-        """Asynchronously create a state machine and return it in the initial
-        state.
+        """Asynchronously create a state machine and return it in the initial state.
 
-        Actions are executed and arbitrary parameters can be supplied
-        just as in the `enter_state` method.
+        Actions are executed and arbitrary parameters can be supplied just as in the `enter_state` method.
         """
         state_machine = cls(states=states, events=events)
         state_ = state or state_machine.state
@@ -694,7 +692,7 @@ class StateMachine(pydantic.BaseModel):
         """Guard the execution of every transition in the state machine.
 
         Guard actions can cancel the execution of transitions by returning `False` or
-        raising an `AssertionError`.
+        raising an `AssertionError`. A return value of `None` does not cancel the transition.
 
         This method is provided for subclasses to override.
 
@@ -833,7 +831,7 @@ class Transition(pydantic.BaseModel):
             # Guards can cancel the transition via return value or failed assertion
             self.cancelled = False
             try:
-                if not await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs):
+                if await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs) is False:
                     raise AssertionError(f'transition cancelled by guard_transition callback')
             except AssertionError:
                 self.cancelled = True

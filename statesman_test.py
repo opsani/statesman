@@ -653,6 +653,15 @@ class TestProgrammaticStateMachine:
                 guard_mock.assert_awaited_once()
                 assert not success, 'should have been guarded'
 
+        async def test_returning_none_from_guard_does_not_cancel(self, state_machine: statesman.StateMachine, mocker) -> None:
+            await state_machine.enter_state(States.starting)
+            with extra(state_machine):
+                guard_mock = mocker.patch.object(state_machine, 'guard_transition')
+                guard_mock.return_value = None
+                success = await state_machine.trigger('finish')
+                guard_mock.assert_awaited_once()
+                assert success, 'should not have been guarded'
+
         async def test_non_assertion_errors_raise(self, state_machine: statesman.StateMachine, mocker) -> None:
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
