@@ -451,7 +451,8 @@ class StateMachine(pydantic.BaseModel):
                             types.MethodType(callable, self),
                             type_,
                         )
-                        self.add_event(event)
+
+                self.add_event(event)
 
             elif descriptor := getattr(method, '__action_descriptor__', None):
                 if descriptor.model == State:

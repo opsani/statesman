@@ -830,7 +830,10 @@ class TestDecoratorStateMachine:
         async def halt(self) -> None:
             self.logs.append(f'Halted')
 
-        @statesman.event('Reset', States.__any__, States.__active__)
+        def _is_okay(self) -> bool:
+            return True
+
+        @statesman.event('Reset', States.__any__, States.__active__, guard=_is_okay)
         async def _reset(self) -> None:
             ...
 
