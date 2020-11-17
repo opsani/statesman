@@ -381,10 +381,14 @@ class StateMachine(pydantic.BaseModel):
     _events: List[Event] = pydantic.PrivateAttr([])
 
     def __init__(
-        self, states: List[State] = [], events: List[Event] = [],
+        self,
+        *,
+        states: List[State] = [],
+        events: List[Event] = [],
         state: Optional[Union[State, str, StateEnum]] = None,
+        **kwargs,
     ) -> None:
-        super().__init__()
+        super().__init__(**kwargs)
 
         # Initialize private attributes
         self._states.extend(states)
@@ -442,7 +446,7 @@ class StateMachine(pydantic.BaseModel):
             raise TypeError(f"invalid initial state: unexpected value of type \"{state.__class__.__name__}\": {state}")
 
         # Initialize any decorated methods
-        for name, method in self.__class__.__dict__.items():
+        for name, method in get_instance_methods(self, stop_at_parent=StateMachine).items():
             if descriptor := getattr(method, '__event_descriptor__', None):
                 if State.active() == descriptor.target:
                     target = State.active()
@@ -1307,3 +1311,53 @@ class HistoryMixin(pydantic.BaseModel):
     def clear_history(self) -> None:
         """Clear the history of recorded transitions."""
         self._transitions.clear()
+
+def get_instance_methods(
+    obj, *, stop_at_parent: Optional[Type[Any]] = None
+) -> Dict[str, Callable]:
+    """Return a mapping of method names to method callables in method definition order.
+
+    Note that the semantics of the values in the dictionary returned are dependent on the input object.
+    When `obj` is an object instance, the values are bound method objects (as returned by `get_methods`).
+    When `obj` is a class, the values are unbound function objects. Depending on what you are trying to
+    do, this may have interesting ramifications (for example, the method signature of the callable will
+    include `self` in the parameters list). This behavior is a side-effect of the lookup implementation
+    which is utilized because it retains method definition order. To obtain a bound method object reference,
+    go through `get_methods` or call `getattr` on an instance.
+
+    Args:
+        obj: The object or class to retrieve the instance methods for.
+        stop_at_parent: The parent class to halt the inheritance traversal at. When None, only
+            instance methods of `obj` are returned.
+
+    Returns:
+        A dictionary of methods in definition order.
+    """
+    cls = obj if inspect.isclass(obj) else obj.__class__
+    methods = collections.ChainMap()
+    stopped = False
+
+    # search for instance specific methods before traversing the class hierarchy
+    if not inspect.isclass(obj):
+        methods.maps.append(
+            dict(filter(lambda item: inspect.ismethod(item[1]), obj.__dict__.items()))
+        )
+
+    for c in inspect.getmro(cls):
+        methods.maps.append(
+            dict(filter(lambda item: inspect.isfunction(item[1]), c.__dict__.items()))
+        )
+        if not stop_at_parent or c == stop_at_parent:
+            stopped = True
+            break
+
+    if not stopped:
+        raise TypeError(
+            f'invalid parent type "{stop_at_parent}": not found in inheritance hierarchy'
+        )
+
+    if isinstance(obj, cls):
+        # Update the values to bound method references
+        return dict(map(lambda name: (name, getattr(obj, name)), methods.keys()))
+    else:
+        return typing.cast(dict, methods)
