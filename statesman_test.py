@@ -826,6 +826,19 @@ class TestProgrammaticStateMachine:
                 assert not success, 'cancelled by guard'
                 guard_action.assert_called_once()
 
+            async def test_guard_actions_run_sequentially(self, state_machine: statesman.StateMachine, mocker) -> None:
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action1 = mocker.stub(name='first guard')
+                guard_action1.return_value = False
+                guard_action2 = mocker.stub(name='second guard')
+                guard_action2.return_value = True
+                event.add_action(lambda: guard_action1(), statesman.Action.Types.guard)
+                event.add_action(lambda: guard_action2(), statesman.Action.Types.guard)
+                assert not await state_machine.trigger('finish'), 'guard failed'
+                guard_action1.assert_called_once()
+                guard_action2.assert_not_called()
+
             async def test_before(self, state_machine: statesman.StateMachine, mocker) -> None:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')

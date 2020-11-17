@@ -160,8 +160,18 @@ class BaseModel(pydantic.BaseModel):
         """Retrieve a subset of actions by type."""
         return list(filter(lambda c: c.type == type_, self._actions))
 
-    async def _run_actions(self, type_: Action.Types, *args, **kwargs) -> List[Any]:
-        return await asyncio.gather(*(action(*args, **kwargs) for action in self._get_actions(type_)))
+    async def _run_actions(self, type_: Action.Types, *args, concurrently: bool = True, **kwargs) -> List[Any]:
+        if concurrently:
+            return await asyncio.gather(*(action(*args, **kwargs) for action in self._get_actions(type_)))
+        else:
+            results = []
+            for action in self._get_actions(type_):
+                result = await action(*args, **kwargs)
+                results.append(result)
+                if result == False:
+                    break
+
+            return results
 
 
 class State(BaseModel):
@@ -893,7 +903,7 @@ class Transition(pydantic.BaseModel):
                         raise ValueError(f"invalid return value from guard action: must return True, False, or None")
                     return x and (y in (True, None))
 
-                results = await self._run_actions(self.event, Action.Types.guard)
+                results = await self._run_actions(self.event, Action.Types.guard, concurrently=False)
                 success = (
                     functools.reduce(_reduce_guard_results, results, True) if results
                     else True
@@ -980,13 +990,13 @@ class Transition(pydantic.BaseModel):
         finally:
             self.finished_at = datetime.datetime.now()
 
-    async def _run_actions(self, model: Optional[BaseModel], type_: Action.Types) -> Optional[List[Any]]:
+    async def _run_actions(self, model: Optional[BaseModel], type_: Action.Types, concurrently: bool = True) -> Optional[List[Any]]:
         """Run all the actions of a given type attached to a State or Event model.
 
         Returns:
             An aggregated list of return values from the actions run or None if the model is None.
         """
-        return await model._run_actions(type_, transition=self, *self.args, **self.kwargs) if model else None
+        return await model._run_actions(type_, transition=self, *self.args, concurrently=concurrently, **self.kwargs) if model else None
 
 
 Transition.update_forward_refs()
