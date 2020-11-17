@@ -831,7 +831,10 @@ class Transition(pydantic.BaseModel):
             # Guards can cancel the transition via return value or failed assertion
             self.cancelled = False
             try:
-                if await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs) is False:
+                result = await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs)
+                if result not in (True, False, None):
+                    raise ValueError(f"invalid return value from guard_transition: must return True, False, or None")
+                if result is False:
                     raise AssertionError(f'transition cancelled by guard_transition callback')
             except AssertionError:
                 self.cancelled = True
@@ -839,9 +842,14 @@ class Transition(pydantic.BaseModel):
             await _call_with_matching_parameters(self.state_machine.before_transition, self, *args, **kwargs)
 
             try:
+                def _reduce_guard_results(x: Any, y: Any) -> bool:
+                    if y not in (True, False, None):
+                        raise ValueError(f"invalid return value from guard action: must return True, False, or None")
+                    return x and (y in (True, None))
+
                 results = await self._run_actions(self.event, Action.Types.guard)
                 success = (
-                    functools.reduce(lambda x, y: x and y, results, True) if results
+                    functools.reduce(_reduce_guard_results, results, True) if results
                     else True
                 )
                 if not success:

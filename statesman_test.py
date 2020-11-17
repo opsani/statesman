@@ -662,6 +662,15 @@ class TestProgrammaticStateMachine:
                 guard_mock.assert_awaited_once()
                 assert success, 'should not have been guarded'
 
+        async def test_returning_invalid_value_from_guard_raises_value_error(self, state_machine: statesman.StateMachine, mocker) -> None:
+            await state_machine.enter_state(States.starting)
+            with extra(state_machine):
+                guard_mock = mocker.patch.object(state_machine, 'guard_transition')
+                guard_mock.return_value = "invalid"
+                with pytest.raises(ValueError, match="invalid return value from guard_transition: must return True, False, or None"):
+                    await state_machine.trigger('finish')
+                guard_mock.assert_awaited_once()
+
         async def test_non_assertion_errors_raise(self, state_machine: statesman.StateMachine, mocker) -> None:
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
@@ -678,6 +687,7 @@ class TestProgrammaticStateMachine:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
+                guard_action.return_value = True
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 assert await state_machine.trigger('finish'), 'guard passed'
                 guard_action.assert_called_once()
@@ -686,27 +696,43 @@ class TestProgrammaticStateMachine:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
+                guard_action.return_value = False
 
-                def cancel() -> bool:
-                    guard_action()
-                    return False
-
-                event.add_action(lambda: cancel(), statesman.Action.Types.guard)
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 # NOTE: The AssertionError is being caught and aborts the test
                 success = await state_machine.trigger('finish')
                 guard_action.assert_called_once()
                 assert not success, 'should have been cancelled by guard'
 
+            async def test_none_return_value_from_guard_does_not_cancel(self, state_machine: statesman.StateMachine, mocker) -> None:
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action = mocker.stub(name='action')
+                guard_action.return_value = None
+
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
+                success = await state_machine.trigger('finish')
+                guard_action.assert_called_once()
+                assert success, 'should not have been cancelled by guard'
+
+            async def test_invalid_return_value_from_guard_raises_value_error(self, state_machine: statesman.StateMachine, mocker) -> None:
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action = mocker.stub(name='action')
+                guard_action.return_value = "invalid"
+
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
+                with pytest.raises(ValueError, match="invalid return value from guard action: must return True, False, or None"):
+                    await state_machine.trigger('finish')
+                guard_action.assert_called_once()
+
             async def test_cancel_via_guard_action_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
+                guard_action.side_effect = AssertionError('should be suppressed')
 
-                def cancel() -> None:
-                    guard_action()
-                    raise AssertionError('should be suppressed')
-
-                event.add_action(lambda: cancel(), statesman.Action.Types.guard)
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 # NOTE: The AssertionError is being caught and aborts the test
                 success = await state_machine.trigger('finish')
                 assert not success, 'cancelled by guard'
