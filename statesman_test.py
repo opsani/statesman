@@ -179,6 +179,9 @@ class TestStateMachine:
         assert len(states) == 2
         assert list(map(lambda i: i.name, states)) == ['starting', 'running']
 
+    def test_repr(self, state_machine: statesman.StateMachine) -> None:
+        assert repr(state_machine) == "StateMachine(states=[State(name='starting', description='Starting'), State(name='running', description='Running'), State(name='stopping', description='Stopping'), State(name='stopped', description='Stopped')], events=[], state=None)"
+
 
 class TestTransition:
     @pytest.fixture()

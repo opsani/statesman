@@ -361,11 +361,8 @@ class StateMachine(pydantic.BaseModel):
         super().__init__()
 
         # Initialize private attributes
-        if states:
-            self._states.extend(states)
-
-        if events:
-            self._events.extend(events)
+        self._states.extend(states)
+        self._events.extend(events)
 
         # Handle embedded States class
         state_enum = getattr(self.__class__, 'States', None)
@@ -746,6 +743,9 @@ class StateMachine(pydantic.BaseModel):
             args: A list of supplemental positional arguments passed when the transition was triggered.
             kwargs: A dict of supplemental keyword arguments passed when the transition was triggered.
         """
+
+    def __repr_args__(self) -> pydantic.ReprArgs:
+        return [('states', self.states), ('events', self.events), ('state', self.state)]
 
     class Config:
         allow_entry = 'initial'  # TODO: any, forbid, accept...
