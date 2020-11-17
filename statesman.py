@@ -481,23 +481,24 @@ class StateMachine(pydantic.BaseModel):
 
                 self.add_event(event)
 
-            elif descriptor := getattr(method, '__action_descriptor__', None):
-                if descriptor.model == State:
-                    obj = self.get_state(descriptor.name)
-                    if not obj:
-                        raise LookupError(f"unknown state: \"{descriptor.name}\"")
-                elif descriptor.model == Event:
-                    obj = self.get_event(descriptor.name)
-                    if not obj:
-                        raise LookupError(f"unknown event: \"{descriptor.name}\"")
-                else:
-                    raise TypeError(f'unknown model type: {descriptor.model.__name__}')
+            elif descriptors := getattr(method, '__action_descriptors__', None):
+                for descriptor in descriptors:
+                    if descriptor.model == State:
+                        obj = self.get_state(descriptor.name)
+                        if not obj:
+                            raise LookupError(f"unknown state: \"{descriptor.name}\"")
+                    elif descriptor.model == Event:
+                        obj = self.get_event(descriptor.name)
+                        if not obj:
+                            raise LookupError(f"unknown event: \"{descriptor.name}\"")
+                    else:
+                        raise TypeError(f'unknown model type: {descriptor.model.__name__}')
 
-                # Create a bound method and attach the action
-                obj.add_action(
-                    types.MethodType(descriptor.callable, self),
-                    descriptor.type,
-                )
+                    # Create a bound method and attach the action
+                    obj.add_action(
+                        types.MethodType(descriptor.callable, self),
+                        descriptor.type,
+                    )
 
     @classmethod
     async def create(
@@ -918,14 +919,14 @@ class Transition(pydantic.BaseModel):
             # Switch between states and try to stay consistent. Actions can be lost in failures
             try:
                 if self.type in (Transition.Types.external, Transition.Types.self):
-                    await self._run_actions(self.source, Action.Types.exit)
+                    await self._run_actions(self.source, Action.Types.exit, state=self.target)
 
                 self.state_machine._state = self.target
                 await _call_with_matching_parameters(self.state_machine.on_transition, self, *args, **kwargs)
                 self.results = await self._run_actions(self.event, Action.Types.on)
 
                 if self.type in (Transition.Types.external, Transition.Types.self):
-                    await self._run_actions(self.target, Action.Types.entry)
+                    await self._run_actions(self.target, Action.Types.entry, state=self.target)
 
             except Exception:
                 self.state_machine._state = self.source
@@ -990,13 +991,19 @@ class Transition(pydantic.BaseModel):
         finally:
             self.finished_at = datetime.datetime.now()
 
-    async def _run_actions(self, model: Optional[BaseModel], type_: Action.Types, concurrently: bool = True) -> Optional[List[Any]]:
+    async def _run_actions(self, model: Optional[BaseModel], type_: Action.Types, concurrently: bool = True, **kwargs) -> Optional[List[Any]]:
         """Run all the actions of a given type attached to a State or Event model.
 
         Returns:
             An aggregated list of return values from the actions run or None if the model is None.
         """
-        return await model._run_actions(type_, transition=self, *self.args, concurrently=concurrently, **self.kwargs) if model else None
+        return await model._run_actions(
+            type_,
+            transition=self,
+            *self.args,
+            concurrently=concurrently,
+            **{**self.kwargs, **kwargs}
+        ) if model else None
 
 
 Transition.update_forward_refs()
@@ -1120,28 +1127,33 @@ def event(
     return decorator
 
 
-def enter_state(name: Union[str, StateEnum], description: str = '') -> None:
+def enter_state(name: Union[StateIdentifier, List[StateIdentifier]], description: str = '') -> None:
     """Transform a method into an enter state action."""
     return _state_action(name, Action.Types.entry, description)
 
 
-def exit_state(name: Union[str, StateEnum], description: str = '') -> None:
+def exit_state(name: Union[StateIdentifier, List[StateIdentifier]], description: str = '') -> None:
     """Transform a method into an exit state action."""
     return _state_action(name, Action.Types.exit, description)
 
 
-def _state_action(name: Union[str, StateEnum], type_: Action.Types, description: str = ''):
+def _state_action(name: Union[StateIdentifier, List[StateIdentifier]], type_: Action.Types, description: str = ''):
     def decorator(fn):
-        name_ = name.name if isinstance(name, StateEnum) else name
-        descriptor = ActionDescriptor(
-            model=State,
-            name=name_,
-            description=description,
-            type=type_,
-            callable=fn,
-        )
+        names = name if isinstance(name, list) else [name]
+        names_ = list(map(lambda n: n.name if isinstance(n, StateEnum) else n, names))
+        descriptors = []
+        for name_ in names_:
+            descriptors.append(
+                ActionDescriptor(
+                    model=State,
+                    name=name_,
+                    description=description,
+                    type=type_,
+                    callable=fn,
+                )
+            )
 
-        fn.__action_descriptor__ = descriptor
+        fn.__action_descriptors__ = descriptors
         return fn
 
     return decorator
@@ -1177,7 +1189,7 @@ def _event_action(name: str, type_: Action.Types, description: str = ''):
             callable=fn,
         )
 
-        fn.__action_descriptor__ = descriptor
+        fn.__action_descriptors__ = [descriptor]
         return fn
 
     return decorator

@@ -977,6 +977,10 @@ class TestDecoratorStateMachine:
         async def _on_stop(self) -> None:
             self.logs.append(f'_on_stop triggered')
 
+        @statesman.enter_state([States.starting, States.running])
+        async def _enter_states(self, state) -> None:
+            self.logs.append(f'_enter_states triggered: {state}')
+
         @statesman.after_event('terminate')
         async def _terminated(self) -> None:
             self.logs.append(f'_terminated')
@@ -1044,14 +1048,16 @@ class TestDecoratorStateMachine:
         assert state_machine.command == 'ls -al'
         assert state_machine.pid == 31337
         assert state_machine.state == States.starting
-        assert len(state_machine.logs) == 0
+        assert len(state_machine.logs) == 1, f"Got unexpected logs: {state_machine.logs}"
 
         await state_machine.run()
-        assert state_machine.logs == ['Process pid 31337 is now running (command="ls -al")']
+        assert 'Process pid 31337 is now running (command="ls -al")' in state_machine.logs
 
         await state_machine.stop()
         assert state_machine.logs == [
+            "_enter_states triggered: name='starting' description='Starting...'",
             'Process pid 31337 is now running (command="ls -al")',
+            "_enter_states triggered: name='running' description='Running...'",
             'Shutting down pid 31337 (command="ls -al")',
             'Terminated pid 31337 ("ls -al")',
             '_on_stop triggered',
@@ -1063,6 +1069,17 @@ class TestDecoratorStateMachine:
         assert state_machine.state == States.stopped
         assert state_machine.pid is None
         assert state_machine.command is None
+
+    async def test_enter_states(self, state_machine: statesman.StateMachine) -> None:
+        assert state_machine.state is None
+        await state_machine.enter_state(States.starting)
+        assert state_machine.state
+        assert state_machine.state == States.starting
+        await state_machine.enter_state(States.running)
+        assert state_machine.logs == [
+            "_enter_states triggered: name='starting' description='Starting...'",
+            "_enter_states triggered: name='running' description='Running...'",
+        ]
 
 
 class TestInitialState:
