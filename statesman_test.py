@@ -304,6 +304,42 @@ class TestTransition:
         entry_stub.assert_called_once()
         exit_stub.assert_called_once()
 
+    async def test_results_is_none_when_event_is_none(self, transition: statesman.Transition) -> None:
+        assert transition.event is None
+        assert transition.results is None
+        assert await transition()
+        assert transition.results is None
+
+    async def test_results_is_populated_with_return_value_of_on_event_handlers(self, mocker) -> None:
+        state_machine = statesman.StateMachine()
+        state_machine.add_states(statesman.State.from_enum(States))
+        stopping = state_machine.get_state(States.stopping)
+        starting = state_machine.get_state(States.starting)
+        await state_machine.enter_state(stopping)
+
+        event = statesman.Event(
+            name='finish',
+            sources=[stopping],
+            target=stopping,
+        )
+        start_stub = mocker.stub(name='entering starting')
+        start_stub.return_value = 31337
+        def on_event(): return start_stub()
+        event.add_action(on_event, statesman.Action.Types.on)
+        state_machine.add_event(event)
+
+        transition = statesman.Transition(
+            state_machine=state_machine,
+            source=stopping,
+            target=starting,
+            type=statesman.Transition.Types.external,
+            event=event,
+        )
+        assert transition.state_machine.state == stopping
+
+        assert await transition()
+        assert transition.results == [31337]
+
 
 class TestProgrammaticStateMachine:
     def test_add_state(self) -> None:
@@ -633,6 +669,58 @@ class TestProgrammaticStateMachine:
             await state_machine.enter_state(States.starting)
             with pytest.raises(TypeError, match="event trigger failed: cannot trigger an event of type \"int\": 1234"):
                 await state_machine.trigger(1234)
+
+        class TestReturnTypes:
+            # bool, scalar, list, transition
+            @pytest.fixture()
+            def event(self, state_machine: statesman.StateMachine) -> statesman.Event:
+                event = state_machine.get_event('finish')
+                # def on_action() -> int:
+                #     return 31337
+                event.add_action(lambda: 31337, statesman.Action.Types.on)
+                event.add_action(lambda: 187, statesman.Action.Types.on)
+                event.add_action(lambda: 420, statesman.Action.Types.on)
+                return event
+
+            @pytest.mark.parametrize(('return_type', 'expected_return_value',),
+                [
+                    (statesman.Event.ReturnType.bool, True),
+                    (statesman.Event.ReturnType.scalar, 31337),
+                    (statesman.Event.ReturnType.tuple, (True, 31337)),
+                    (statesman.Event.ReturnType.list, [31337, 187, 420]),
+                ]
+            )
+            async def test_return_types(self, state_machine: statesman.StateMachine, event, return_type, expected_return_value) -> None:
+                await state_machine.enter_state(States.starting)
+                assert state_machine.state == States.starting
+                event.return_type = return_type
+                result = await state_machine.trigger('finish')
+                assert result == expected_return_value
+
+            @pytest.mark.parametrize(('return_type', 'expected_return_value',),
+                [
+                    (statesman.Event.ReturnType.bool, True),
+                    (statesman.Event.ReturnType.scalar, 31337),
+                    (statesman.Event.ReturnType.tuple, (True, 31337)),
+                    (statesman.Event.ReturnType.list, [31337, 187, 420]),
+                ]
+            )
+            async def test_return_types_override_on_trigger(self, state_machine: statesman.StateMachine, event, return_type, expected_return_value) -> None:
+                await state_machine.enter_state(States.starting)
+                assert state_machine.state == States.starting
+                event.return_type = statesman.Event.ReturnType.transition
+                result = await state_machine.trigger('finish', return_type=return_type)
+                assert result == expected_return_value
+
+            async def test_transition_return_type(self, state_machine: statesman.StateMachine, event) -> None:
+                await state_machine.enter_state(States.starting)
+                assert state_machine.state == States.starting
+                event.return_type = statesman.Event.ReturnType.transition
+                transition = await state_machine.trigger('finish')
+                assert isinstance(transition, statesman.Transition)
+                assert transition.event == event
+                assert transition.succeeded == True
+                assert transition.results == [31337, 187, 420]
 
         async def test_with_event_not_in_machine(self, state_machine: statesman.StateMachine) -> None:
             invalid_event = statesman.Event(
