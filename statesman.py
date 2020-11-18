@@ -617,6 +617,16 @@ class StateMachine(pydantic.BaseModel):
 
         return next(filter(lambda e: e.name == name_, self._events), None)
 
+    def can_trigger(self, event: Union[Event, str], *, from_state: Optional[Union[str, StateEnum, State]] = None) -> bool:
+        """Return a boolean value that indicates if the event can be triggered from a state."""
+        event_ = self.get_event(event) if isinstance(event, str) else event
+        state_ = from_state or self.state
+        return state_ in event_.sources
+
+    def triggerable_events(self, *, from_state: Optional[Union[str, StateEnum, State]] = None) -> List[Event]:
+        """Return a list of events triggerable from a state."""
+        return list(filter(lambda event: self.can_trigger(event, from_state=from_state), self.events))
+
     async def trigger(
         self,
         event: Union[Event, str],

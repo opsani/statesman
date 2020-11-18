@@ -620,6 +620,13 @@ class TestProgrammaticStateMachine:
                     target=state_machine.get_state(States.stopping),
                 ),
             )
+            state_machine.add_event(
+                statesman.Event(
+                    name='reset',
+                    sources=state_machine.get_states(States.stopping),
+                    target=state_machine.get_state(States.starting),
+                ),
+            )
             return state_machine
 
         async def test_get_event(self, state_machine: statesman.StateMachine) -> None:
@@ -636,6 +643,31 @@ class TestProgrammaticStateMachine:
                 state_machine.get_event(1234)
 
             assert str(e.value) == "cannot get event for name of type \"int\": 1234"
+
+        async def test_can_trigger(self, state_machine: statesman.StateMachine) -> None:
+            await state_machine.enter_state(States.starting)
+            assert state_machine.state == States.starting
+            assert state_machine.can_trigger('finish')
+            assert not state_machine.can_trigger('reset')
+            await state_machine.trigger('finish')
+            assert state_machine.state == States.stopping
+            assert not state_machine.can_trigger('finish')
+            assert state_machine.can_trigger('reset')
+
+        async def test_can_trigger_from_state(self, state_machine: statesman.StateMachine) -> None:
+            assert state_machine.can_trigger('finish', from_state=States.starting)
+            assert state_machine.can_trigger('finish', from_state="starting")
+            assert state_machine.can_trigger('finish', from_state=state_machine.get_state("starting"))
+
+            assert not state_machine.can_trigger('reset', from_state=States.starting)
+            assert not state_machine.can_trigger('reset', from_state="starting")
+            assert not state_machine.can_trigger('reset', from_state=state_machine.get_state("starting"))
+
+        async def test_can_trigger_from_state(self, state_machine: statesman.StateMachine) -> None:
+            assert state_machine.triggerable_events() == []
+            assert state_machine.triggerable_events(from_state=None) == []
+            assert state_machine.triggerable_events(from_state="stopping") == [state_machine.get_event("reset")]
+            assert state_machine.triggerable_events(from_state="starting") == [state_machine.get_event("finish")]
 
         async def test_by_name(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
