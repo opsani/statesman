@@ -596,7 +596,7 @@ class StateMachine(pydantic.BaseModel):
         self._events.append(event)
 
     def add_events(self, events: Sequence[Event]) -> None:
-        """Add a list of events to the state machine."""
+        """Add a sequence of events to the state machine."""
         [self.add_event(event) for event in events]
 
     def remove_event(self, event: Event) -> None:
@@ -604,7 +604,7 @@ class StateMachine(pydantic.BaseModel):
         self._events.remove(event)
 
     def remove_events(self, events: Sequence[Event]) -> None:
-        """Remove a sequence of event from the state machine."""
+        """Remove a sequence of events from the state machine."""
         [self.remove_event(event) for event in events]
 
     def get_event(self, name: Union[str, StateEnum]) -> Optional[Event]:
@@ -1075,7 +1075,6 @@ class ActionDescriptor(pydantic.BaseModel):
     callable: Callable
 
 def event(
-    description: Optional[str],
     source: Source,
     target: Target,
     *,
@@ -1084,6 +1083,7 @@ def event(
     after: Union[None, Callable, List[Callable]] = None,
     transition_type: Optional[Transition.Types] = None,
     return_type: Event.ReturnType = Event.ReturnType.scalar,
+    description: Optional[str] = None,
     **kwargs
 ) -> None:
     """Transform a method into a state machine event.
@@ -1097,7 +1097,6 @@ def event(
     as an on event action.
 
     Args:
-        description: An optional description of the event.
         source: The state or states that the event can be triggered from. `None` indicates an initial state transition.
         target: The state that the state machine will transition into at the completion of the transition.
         guard: An optional list of callables to attach as guard actions to the newly created event.
@@ -1105,11 +1104,13 @@ def event(
         after: An optional list of callables to attach as after actions to the newly created event.
         transition_type: The type of transition to perform when the event is triggered. When `None`, the type is inferred.
         return_type: The type of results returned when the event is triggered.
+        description: An optional description of the event. When None, the description is taken from the docstring.
     """
     def decorator(fn):
+        description_ = inspect.getdoc(fn) if description is None else description
         target_ = target.name if isinstance(target, StateEnum) else target
         descriptor = EventDescriptor(
-            description=description,
+            description=description_,
             source=source,
             target=target_,
             transition_type=transition_type,
@@ -1131,27 +1132,28 @@ def event(
     return decorator
 
 
-def enter_state(name: Union[StateIdentifier, List[StateIdentifier]], description: str = '') -> None:
+def enter_state(name: Union[StateIdentifier, List[StateIdentifier]], description: Optional[str] = None) -> None:
     """Transform a method into an enter state action."""
     return _state_action(name, Action.Types.entry, description)
 
 
-def exit_state(name: Union[StateIdentifier, List[StateIdentifier]], description: str = '') -> None:
+def exit_state(name: Union[StateIdentifier, List[StateIdentifier]], description: Optional[str] = None) -> None:
     """Transform a method into an exit state action."""
     return _state_action(name, Action.Types.exit, description)
 
 
-def _state_action(name: Union[StateIdentifier, List[StateIdentifier]], type_: Action.Types, description: str = ''):
+def _state_action(name: Union[StateIdentifier, List[StateIdentifier]], type_: Action.Types, description: Optional[str] = None):
     def decorator(fn):
         names = name if isinstance(name, list) else [name]
         names_ = list(map(lambda n: n.name if isinstance(n, StateEnum) else n, names))
+        description_ = inspect.getdoc(fn) if description is None else description
         descriptors = []
         for name_ in names_:
             descriptors.append(
                 ActionDescriptor(
                     model=State,
                     name=name_,
-                    description=description,
+                    description=description_,
                     type=type_,
                     callable=fn,
                 )
@@ -1163,32 +1165,33 @@ def _state_action(name: Union[StateIdentifier, List[StateIdentifier]], type_: Ac
     return decorator
 
 
-def guard_event(name: str, description: str = '') -> None:
+def guard_event(name: str, description: Optional[str] = None) -> None:
     """Transform a method into a guard event action."""
     return _event_action(name, Action.Types.guard, description)
 
 
-def before_event(name: str, description: str = '') -> None:
+def before_event(name: str, description: Optional[str] = None) -> None:
     """Transform a method into a before event action."""
     return _event_action(name, Action.Types.before, description)
 
 
-def on_event(name: str, description: str = '') -> None:
+def on_event(name: str, description: Optional[str] = None) -> None:
     """Transform a method into an on event action."""
     return _event_action(name, Action.Types.on, description)
 
 
-def after_event(name: str, description: str = '') -> None:
+def after_event(name: str, description: Optional[str] = None) -> None:
     """Transform a method into an after event action."""
     return _event_action(name, Action.Types.after, description)
 
 
-def _event_action(name: str, type_: Action.Types, description: str = ''):
+def _event_action(name: str, type_: Action.Types, description: Optional[str] = None):
     def decorator(fn):
+        description_ = inspect.getdoc(fn) if description is None else description
         descriptor = ActionDescriptor(
             model=Event,
             name=name,
-            description=description,
+            description=description_,
             type=type_,
             callable=fn,
         )

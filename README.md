@@ -47,22 +47,26 @@ class ProcessLifecycle(statesman.StateMachine):
     logs: List[str] = []
 
     # initial state entry point
-    @statesman.event("Start a Process", None, States.starting)
+    @statesman.event(None, States.starting)
     async def start(self, command: str) -> None:
+        """"Start a process."""
         self.command = command
         self.pid = 31337
         self.logs.clear()  # Flush logs between runs
 
-    @statesman.event("Mark the process as running", source=States.starting, target=States.running)
+    @statesman.event(source=States.starting, target=States.running)
     async def run(self, transition: statesman.Transition) -> None:
+        """Mark the process as running."""
         self.logs.append(f"Process pid {self.pid} is now running (command=\"{self.command}\")")
 
-    @statesman.event("Stop a running process", source=States.running, target=States.stopping)
+    @statesman.event(source=States.running, target=States.stopping)
     async def stop(self) -> None:
+        """Stop a running process."""
         self.logs.append(f"Shutting down pid {self.pid} (command=\"{self.command}\")")
 
-    @statesman.event("Terminate a running process", source=States.stopping, target=States.stopped)
+    @statesman.event(source=States.stopping, target=States.stopped)
     async def terminate(self) -> None:
+        """Terminate a running process."""
         self.logs.append(f"Terminated pid {self.pid} (\"{self.command}\")")
         self.command = None
         self.pid = None
@@ -132,6 +136,24 @@ programmatically.
 ## Quick start
 
 Forthcoming after I get some sleep.
+
+## Transition lifecycle
+
+| Action | Current State | Comments |
+|--------|---------------|----------|
+| `guard` | `source`     | Can cancel the transition. |
+| `before` | `source`
+
+## API Overview
+
+Transition types. Initial states...
+Async create...
+Document guard clauses (return values, exceptions)
+How output is handled (event handler decorator)
+Event.ReturnType
+Guards run sequentially
+
+## Why another state machine library? / Why statesman?
 
 ## License
 

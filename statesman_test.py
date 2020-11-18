@@ -941,36 +941,42 @@ class TestDecoratorStateMachine:
         logs: List[str] = []
 
         # initial state entry point
-        @statesman.event('Start a Process', None, States.starting)
+        @statesman.event(None, States.starting)
         async def start(self, command: str = '...') -> None:
+            """Start a process."""
             self.command = command
             self.pid = 31337
             self.logs.clear()  # Flush logs between runs
 
-        @statesman.event('Mark as process as running', source=States.starting, target=States.running)
+        @statesman.event(source=States.starting, target=States.running)
         async def run(self, transition: statesman.Transition) -> None:
+            """Mark as process as running."""
             self.logs.append(f'Process pid {self.pid} is now running (command=\"{self.command}\")')
 
-        @statesman.event('Stop a running process', source=States.running, target=States.stopping)
+        @statesman.event(source=States.running, target=States.stopping)
         async def stop(self) -> None:
+            """Stop a running process."""
             self.logs.append(f"Shutting down pid {self.pid} (command=\"{self.command}\")")
 
-        @statesman.event('Terminate a running process', source=States.stopping, target=States.stopped)
+        @statesman.event(source=States.stopping, target=States.stopped)
         async def terminate(self) -> None:
+            """Terminate a running process."""
             self.logs.append(f"Terminated pid {self.pid} (\"{self.command}\")")
             self.command = None
             self.pid = None
 
-        @statesman.event('Halt', source=States.stopped, target=States.stopped,
+        @statesman.event(source=States.stopped, target=States.stopped,
                          transition_type=statesman.Transition.Types.self)
         async def halt(self) -> None:
+            """Halt the process."""
             self.logs.append(f'Halted')
 
         def _is_okay(self) -> bool:
             return True
 
-        @statesman.event('Reset', States.__any__, States.__active__, guard=_is_okay)
+        @statesman.event(States.__any__, States.__active__, guard=_is_okay)
         async def _reset(self) -> None:
+            """Reset the state machine."""
             ...
 
         @statesman.enter_state(States.stopped)
@@ -1001,7 +1007,7 @@ class TestDecoratorStateMachine:
     async def test_events_added(self, state_machine: statesman.StateMachine) -> None:
         event = state_machine.get_event('start')
         assert event
-        assert event.description == 'Start a Process'
+        assert event.description == 'Start a process.'
         assert event.sources == [None]
         assert event.target == States.starting
 
