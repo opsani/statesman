@@ -103,7 +103,7 @@ class Action(pydantic.BaseModel):
 
     callable: Callable
     signature: inspect.Signature
-    type: Optional[Action.Types] = None
+    type: Optional['Action.Types'] = None
 
     @pydantic.root_validator(pre=True)
     @classmethod
