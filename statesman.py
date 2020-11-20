@@ -10,7 +10,8 @@ import functools
 import inspect
 import types
 import typing
-from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, Union
+import warnings
+from typing import Any, Callable, Coroutine, Dict, Iterator, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import pydantic
 
@@ -22,6 +23,7 @@ __all__ = [
     'InitialState',
     'StateMachine',
     'HistoryMixin',
+    'SequencingMixin',
     'event',
     'enter_state',
     'exit_state',
@@ -134,11 +136,11 @@ class BaseModel(pydantic.BaseModel):
     _actions: List[Action] = pydantic.PrivateAttr([])
 
     def _add_action(self, action: Action) -> None:
-        """Add a action."""
+        """Add an action."""
         self._actions.append(action)
 
     def _remove_action(self, action: Action) -> None:
-        """Remove a action."""
+        """Remove an action."""
         self._actions.remove(action)
 
     def _remove_actions(self, actions: Union[None, List[Action], Action.Types] = None) -> None:
@@ -271,7 +273,6 @@ class State(BaseModel):
         """
         return super()._remove_actions(actions)
 
-
 class Event(BaseModel):
     """Event objects model something that happens within a state machine that triggers a state transition.
 
@@ -283,29 +284,12 @@ class Event(BaseModel):
         transition_type: An optional type specifying how the transition triggered by the event should be performed.
         return_type: The type of results returned when the event is triggered.
     """
-    class ReturnType(enum.Enum):
-        """An enumeration that defines the available return types of triggered events.
-
-        The supported return types are:
-            * bool: Return a boolean value indicating if the event transition completed successfully.
-            * scalar: Return the return value of the first on event action attached.
-            * tuple: Return a tuple of a boolean indicating if the event transition completed successfully
-                and a scalar return value of the first on event action attached.
-            * list: Return a list of all return values from all on event actions attached.
-            * transition: Return the Transition object that triggered the event.
-        """
-        bool = enum.auto()
-        scalar = enum.auto()
-        tuple = enum.auto()
-        list = enum.auto()
-        transition = enum.auto()
-
     name: str
     description: Optional[str] = None
     sources: List[Union[None, State]]
     target: State
     transition_type: Optional['Transition.Types']
-    return_type: Event.ReturnType = pydantic.Field(default_factory=lambda: Event.ReturnType.bool)
+    return_type: Type['Result'] = bool
 
     @property
     def actions(self) -> List[Action]:
@@ -358,6 +342,21 @@ class Event(BaseModel):
         return hash(self.name)
 
 
+class Entry(str, enum.Enum):
+    """An enumeration that configures when `enter_state` can or cannot be called."""
+    allow = "allow"
+    initial = "initial"
+    ignore = "ignore"
+    forbid = "forbid"
+
+
+class Guard(str, enum.Enum):
+    """An enumeration that configures how failing guard actions are handled."""
+    silence = "silence"
+    warning = "warning"
+    exception = "exception"
+
+
 class StateMachine(pydantic.BaseModel):
     """StateMachine objects model state machines comprised of states, events,
     and associated actions.
@@ -365,13 +364,13 @@ class StateMachine(pydantic.BaseModel):
     Initial state can be established via the `state` argument to the initializer but will not trigger
     any actions, as object initialization is run synchronously. If your state machine has actions on
     the initial state or entry events, initialize the state machine into an indeterminate state and then
-    call `enter_state` or `trigger` to establish initial state and call all associated actions.
+    call `enter_state` or `trigger_event` to establish initial state and call all associated actions.
 
     Args:
         states: A list of states to add to the state machine.
         events: A list of events to add to the state machine.
         state: The initial state of the state machine. When `None` the state machine initializes into an
-            indeterminate state. The `enter_state` and `trigger` methods can be used to establish an initial
+            indeterminate state. The `enter_state` and `trigger_event` methods can be used to establish an initial
             state post-initialization.
     """
     __state__: Optional[StateEnum] = None
@@ -520,8 +519,9 @@ class StateMachine(pydantic.BaseModel):
         state_machine = cls(states=states, events=events)
         state_ = state or state_machine.state
         if state_:
-            if not await state_machine.enter_state(state_, *args, **kwargs):
-                raise RuntimeError(f'failed creation of state machine: could not enter the requested state')
+            with _state_entry(state_machine):
+                if not await state_machine.enter_state(state_, *args, **kwargs):
+                    raise RuntimeError(f'failed creation of state machine: could not enter the requested state')
         return state_machine
 
     @property
@@ -617,7 +617,7 @@ class StateMachine(pydantic.BaseModel):
 
         return next(filter(lambda e: e.name == name_, self._events), None)
 
-    def can_trigger(self, event: Union[Event, str], *, from_state: Optional[Union[str, StateEnum, State]] = None) -> bool:
+    def can_trigger_event(self, event: Union[Event, str], *, from_state: Optional[Union[str, StateEnum, State]] = None) -> bool:
         """Return a boolean value that indicates if the event can be triggered from a state."""
         event_ = self.get_event(event) if isinstance(event, str) else event
         state_ = from_state or self.state
@@ -625,13 +625,13 @@ class StateMachine(pydantic.BaseModel):
 
     def triggerable_events(self, *, from_state: Optional[Union[str, StateEnum, State]] = None) -> List[Event]:
         """Return a list of events triggerable from a state."""
-        return list(filter(lambda event: self.can_trigger(event, from_state=from_state), self.events))
+        return list(filter(lambda event: self.can_trigger_event(event, from_state=from_state), self.events))
 
-    async def trigger(
+    async def trigger_event(
         self,
         event: Union[Event, str],
         *args,
-        return_type: Optional[Event.ReturnType] = None,
+        return_type: Optional[Type[Result]] = None,
         **kwargs
     ) -> Union[None, bool, 'Transition', List[Any], Any]:
         """Trigger a state transition event.
@@ -679,29 +679,25 @@ class StateMachine(pydantic.BaseModel):
                     f"event trigger failed: the \"{event_.name}\" event does not support initial state transitions",
                 )
 
+        # This is a bit of black magic to modify the args of a coroutine object
+        return_type_ = kwargs.pop('return_type', return_type)
+
         # Substitute the active state if necessary
         target = self.state if event_.target == State.active() else event_.target
         if self.state is None and target is None:
             raise RuntimeError(f'event trigger failed: cannot transition from a None state to another None state')
         transition = Transition(state_machine=self, event=event_, source=self.state, target=target)
-        success = await transition(*args, **kwargs)
+        await transition(*args, **kwargs)
+        return transition.results_as(return_type_ or event_.return_type)
 
-        return_type_ = return_type or event_.return_type
-        scalar = transition.results[0] if transition.succeeded and transition.results else None
-        if return_type_ == Event.ReturnType.bool:
-            return success
-        elif return_type_ == Event.ReturnType.scalar:
-            return scalar
-        elif return_type_ == Event.ReturnType.tuple:
-            return (success, scalar)
-        elif return_type_ == Event.ReturnType.list:
-            return transition.results
-        elif return_type_ == Event.ReturnType.transition:
-            return transition
-        else:
-            raise ValueError(f"unknown Event.ReturnType value: {return_type_}")
-
-    async def enter_state(self, state: Union[State, StateEnum, str], *args, type_: Optional[Transition.Types] = None, **kwargs) -> bool:
+    async def enter_state(
+        self,
+        state: Union[State, StateEnum, str],
+        *args,
+        type_: Optional[Transition.Types] = None,
+        return_type: Type[Result] = bool,
+        **kwargs
+    ) -> Result:
         """Transition the state machine into a specific state.
 
         This method can be used to establish an initial state as an alternative to the object initializer,
@@ -718,12 +714,18 @@ class StateMachine(pydantic.BaseModel):
         to another in this manner can lead to inconsistent and surprising behavior because you may be forcing the state machine
         to change states in a way that is otherwise unreachable.
 
-        # TODO: Forbid via a config class attribute?
+        Usage of this method can be restricted through the nested `Config` class. The `state_entry` attribute provides
+        configuration of state entry behaviors via the `Entry` enum. There are four modes available:
+            * `Entry.allow` - The `enter_state` method can be called at any time (the default).
+            * `Entry.initial` - The `enter_state` method can be called to establish initial state and thereafter is forbidden.
+            * `Entry.ignore` - The `enter_state` method can never be used and will fail and return when called.
+            * `Entry.forbid` - The `enter_state` method can never be used and will raise an exception when called.
 
         Args:
             state: The state to enter.
             args: Supplemental positional arguments to be passed to the transition and triggered actions.
             type_: The type of Transition to perform. When `None`, the type is inferred.
+            return_type: The type of result to return.
             kwargs: Supplemental keyword arguments to be passed to the transition and triggered actions.
 
         Returns:
@@ -734,6 +736,19 @@ class StateMachine(pydantic.BaseModel):
             LookupError: Raised if the state cannot be found by name or enum value.
             TypeError: Raised if the state value given is not a State, StateEnum, or str object.
         """
+        state_entry = self.__config__.state_entry
+        if state_entry == Entry.allow:
+            pass
+        elif state_entry == Entry.initial:
+            if self.state is not None:
+                raise RuntimeError(f"state entry failed: `enter_state` is only available to set initial state")
+        elif state_entry == Entry.ignore:
+            return False
+        elif state_entry == Entry.forbid:
+            raise RuntimeError(f"state entry failed: use of the `enter_state` method is forbidden")
+        else:
+            raise ValueError(f"unknown Entry value: {state_entry}")
+
         if isinstance(state, State):
             state_ = state
             if state_ not in self._states:
@@ -746,10 +761,14 @@ class StateMachine(pydantic.BaseModel):
         else:
             raise TypeError(f"state entry failed: unexpected value of type \"{state.__class__.__name__}\": {state}")
 
+        # This is a bit of black magic to modify the args of a coroutine object
+        return_type_ = kwargs.pop('return_type', return_type)
+
         # Infer the transition type.
         type_ = type_ or (Transition.Types.self if self.state == state_ else Transition.Types.external)
         transition = Transition(state_machine=self, source=self.state, target=state_, type=type_)
-        return await transition(*args, **kwargs)
+        await transition(*args, **kwargs)
+        return transition.results_as(return_type_ or bool)
 
     ##
     # Actions
@@ -815,8 +834,12 @@ class StateMachine(pydantic.BaseModel):
         return [('states', self.states), ('events', self.events), ('state', self.state)]
 
     class Config:
-        allow_entry = 'initial'  # TODO: any, forbid, accept...
-        guard_with = 'exception'  # TODO: warning, silence
+        state_entry = Entry.allow
+        guard_with = Guard.silence
+
+
+# The types that transition results can be represented as.
+Result = TypeVar('Result', bool, object, tuple, list, 'Transition')
 
 
 class Transition(pydantic.BaseModel):
@@ -901,14 +924,25 @@ class Transition(pydantic.BaseModel):
             # Guards can cancel the transition via return value or failed assertion
             self.cancelled = False
             self.succeeded = False
+            guard_with = self.state_machine.__config__.guard_with
             try:
                 result = await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs)
                 if result not in (True, False, None):
                     raise ValueError(f"invalid return value from guard_transition: must return True, False, or None")
                 if result is False:
                     raise AssertionError(f'transition cancelled by guard_transition callback')
-            except AssertionError:
+            except AssertionError as error:
                 self.cancelled = True
+
+                if guard_with == Guard.silence:
+                    pass
+                elif guard_with == Guard.warning:
+                    warnings.warn('transition guard failure: guard_transition returned False')
+                elif guard_with == Guard.exception:
+                    raise RuntimeError(f"transition guard failure: guard_transition returned False") from error
+                else:
+                    raise ValueError(f"unknown Guard value: {guard_with}")
+
                 return False
             await _call_with_matching_parameters(self.state_machine.before_transition, self, *args, **kwargs)
 
@@ -925,8 +959,18 @@ class Transition(pydantic.BaseModel):
                 )
                 if not success:
                     raise AssertionError(f'transition cancelled by guard action')
-            except AssertionError:
+            except AssertionError as error:
                 self.cancelled = True
+
+                if guard_with == Guard.silence:
+                    pass
+                elif guard_with == Guard.warning:
+                    warnings.warn('transition guard failure: guard action returned False')
+                elif guard_with == Guard.exception:
+                    raise RuntimeError(f"transition guard failure: guard action returned False") from error
+                else:
+                    raise ValueError(f"unknown Guard value: {guard_with}")
+
                 return False
             await self._run_actions(self.event, Action.Types.before)
 
@@ -995,6 +1039,22 @@ class Transition(pydantic.BaseModel):
         """Return a time delta value detailing how long the transition took to execute."""
         return self.finished_at - self.started_at if self.is_finished else None
 
+    def results_as(self, type_: Type[Result]) -> Result:
+        """Return a representation of the results in the specified type."""
+        scalar = self.results[0] if self.succeeded and self.results else None
+        if type_ is bool:
+            return self.succeeded
+        elif type_ is object:
+            return scalar
+        elif type_ is tuple:
+            return (self.succeeded, scalar)
+        elif type_ is list:
+            return self.results
+        elif type_ is Transition:
+            return self
+        else:
+            raise TypeError(f"unknown result type: {type_}")
+
     @contextlib.asynccontextmanager
     async def _lifecycle(self):
         """Manage lifecycle context for transition execution."""
@@ -1027,11 +1087,11 @@ StateIdentifier = Union[StateEnum, str]
 Source = Union[None, StateIdentifier, List[StateIdentifier], Type[StateEnum]]
 Target = Union[None, StateIdentifier, ActiveState]
 
-
 class EventDescriptor(pydantic.BaseModel):
+    """Describes an Event within a state machine."""
     description: Optional[str] = None
     transition_type: Optional[Transition.Types] = None
-    return_type: Event.ReturnType = Event.ReturnType.list
+    return_type: Type[Result] = list
     source: List[Union[None, StateIdentifier]]
     target: Target
     guard: List[Callable]
@@ -1092,7 +1152,7 @@ def event(
     before: Union[None, Callable, List[Callable]] = None,
     after: Union[None, Callable, List[Callable]] = None,
     transition_type: Optional[Transition.Types] = None,
-    return_type: Event.ReturnType = Event.ReturnType.scalar,
+    return_type: Type[Result] = object,
     description: Optional[str] = None,
     **kwargs
 ) -> None:
@@ -1103,8 +1163,7 @@ def event(
 
     When the decorated method is called, it will trigger the newly created event on the state machine.
     The return value of the decorated method is determined by the `return_type` argument. The default of
-    `Event.ReturnType.scalar` will return the value returned from the original method which is attached
-    as an on event action.
+    `object` will return the value returned from the original method which is attached as an on event action.
 
     Args:
         source: The state or states that the event can be triggered from. `None` indicates an initial state transition.
@@ -1113,7 +1172,7 @@ def event(
         before: An optional list of callables to attach as before actions to the newly created event.
         after: An optional list of callables to attach as after actions to the newly created event.
         transition_type: The type of transition to perform when the event is triggered. When `None`, the type is inferred.
-        return_type: The type of results returned when the event is triggered.
+        return_type: The type of results to return when the event is triggered.
         description: An optional description of the event. When None, the description is taken from the docstring.
     """
     def decorator(fn):
@@ -1134,7 +1193,7 @@ def event(
         @functools.wraps(fn)
         async def event_trigger(self, *args, **kwargs) -> Any:
             # NOTE: The original function is attached as an on event handler
-            return await self.trigger(fn.__name__, *args, **kwargs)
+            return await self.trigger_event(fn.__name__, *args, **kwargs)
 
         event_trigger.__event_descriptor__ = descriptor
         return event_trigger
@@ -1325,6 +1384,49 @@ class HistoryMixin(pydantic.BaseModel):
         """Clear the history of recorded transitions."""
         self._transitions.clear()
 
+
+class SequencingMixin(pydantic.BaseModel):
+    """A mixin that provides state transition sequencing functionality."""
+    __private_attributes__ = {'_queue': pydantic.PrivateAttr(default_factory=lambda: asyncio.Queue())}
+
+    def sequence(self, *coroutines: List[Coroutine[Any, Any, Transition]]) -> None:
+        """Sequence a series of coroutines that trigger state transitions.
+
+        The coroutines passed may be invocations of `enter_state`, `trigger_event`,
+        or a decorated event function. The coroutines are awaited as they are dequeued
+        via calls to the `next_state` method.
+
+        Raises:
+            TypeError: Raised if a sequenced object is not a coroutine.
+        """
+        for coroutine in coroutines:
+            if not inspect.iscoroutine(coroutine):
+                raise TypeError(f"invalid argument: can only sequence coroutines that trigger state transitions")
+
+            # Black magic to switch the return type. See StateMachine.enter_state/trigger_event
+            locals_ = inspect.getcoroutinelocals(coroutine)
+            locals_['kwargs']['return_type'] = Transition
+
+            self._queue.put_nowait(coroutine)
+
+    async def next_state(self) -> Optional[Transition]:
+        """Advance to the next sequenced state and return the executed Transition or None if the queue is empty.
+
+        The transition is executed by awaiting the coroutine.
+
+        Raises:
+            TypeError: Raised if the coroutine executed fails to return a Transition.
+        """
+        import functools
+        if self._queue.empty():
+            return None
+
+        coroutine = self._queue.get_nowait()
+        transition = await coroutine
+        if not isinstance(transition, Transition):
+            raise TypeError(f"expected return value of type {Transition.__qualname__} but found {transition.__class__.__name__}: {coroutine}")
+        return transition
+
 def get_instance_methods(
     obj, *, stop_at_parent: Optional[Type[Any]] = None
 ) -> Dict[str, Callable]:
@@ -1374,3 +1476,17 @@ def get_instance_methods(
         return dict(map(lambda name: (name, getattr(obj, name)), methods.keys()))
     else:
         return typing.cast(dict, methods)
+
+
+@contextlib.contextmanager
+def _state_entry(
+    obj: StateMachine, entry: Entry = Entry.allow,
+) -> Iterator[StateMachine]:
+    """Temporarily override the value of the `entry` setting on a StateMachine object.
+    """
+    original = obj.__config__.state_entry
+    obj.__config__.state_entry = entry
+    try:
+        yield obj
+    finally:
+        obj.__config__.state_entry = original

@@ -2,7 +2,8 @@ import asyncio
 import builtins
 import contextlib
 import datetime
-from typing import Any, Dict, Iterator, List, Optional
+import inspect
+from typing import Any, Coroutine, Dict, Iterator, List, Optional
 
 import devtools
 import pydantic
@@ -541,6 +542,48 @@ class TestProgrammaticStateMachine:
         with pytest.raises(pydantic.ValidationError, match=error_message):
             await state_machine.enter_state(target_state, type_=transition_type)
 
+    class TestEntryConfig:
+        async def test_allow(self) -> None:
+            state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
+            state_machine.__config__.state_entry = statesman.Entry.allow
+            assert state_machine.state is None
+            assert await state_machine.enter_state(States.starting)
+            assert state_machine.state == States.starting
+            assert await state_machine.enter_state(States.stopping)
+            assert state_machine.state == States.stopping
+            assert await state_machine.enter_state(States.stopped)
+            assert state_machine.state == States.stopped
+
+        async def test_initial(self) -> None:
+            # Enter once for initial, then raise on next try
+            state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
+            state_machine.__config__.state_entry = statesman.Entry.initial
+            assert state_machine.state is None
+            assert await state_machine.enter_state(States.starting)
+            assert state_machine.state == States.starting
+
+            with pytest.raises(RuntimeError, match="state entry failed: `enter_state` is only available to set initial state"):
+                assert await state_machine.enter_state(States.stopping)
+
+        async def test_ignore(self) -> None:
+            # Return false every time
+            state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
+            state_machine.__config__.state_entry = statesman.Entry.ignore
+            assert state_machine.state is None
+            assert not await state_machine.enter_state(States.starting)
+            assert state_machine.state is None
+            assert not await state_machine.enter_state(States.stopping)
+            assert state_machine.state is None
+            assert not await state_machine.enter_state(States.stopped)
+            assert state_machine.state is None
+
+        async def test_forbid(self) -> None:
+            state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
+            state_machine.__config__.state_entry = statesman.Entry.forbid
+            assert state_machine.state is None
+            with pytest.raises(RuntimeError, match="state entry failed: use of the `enter_state` method is forbidden"):
+                assert await state_machine.enter_state(States.starting)
+
     def test_add_event_fails_if_existing(self) -> None:
         state_machine = statesman.StateMachine(states=statesman.State.from_enum(States), state=States.starting)
         state = state_machine.states[0]
@@ -647,21 +690,21 @@ class TestProgrammaticStateMachine:
         async def test_can_trigger(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
             assert state_machine.state == States.starting
-            assert state_machine.can_trigger('finish')
-            assert not state_machine.can_trigger('reset')
-            await state_machine.trigger('finish')
+            assert state_machine.can_trigger_event('finish')
+            assert not state_machine.can_trigger_event('reset')
+            await state_machine.trigger_event('finish')
             assert state_machine.state == States.stopping
-            assert not state_machine.can_trigger('finish')
-            assert state_machine.can_trigger('reset')
+            assert not state_machine.can_trigger_event('finish')
+            assert state_machine.can_trigger_event('reset')
 
         async def test_can_trigger_from_state(self, state_machine: statesman.StateMachine) -> None:
-            assert state_machine.can_trigger('finish', from_state=States.starting)
-            assert state_machine.can_trigger('finish', from_state="starting")
-            assert state_machine.can_trigger('finish', from_state=state_machine.get_state("starting"))
+            assert state_machine.can_trigger_event('finish', from_state=States.starting)
+            assert state_machine.can_trigger_event('finish', from_state="starting")
+            assert state_machine.can_trigger_event('finish', from_state=state_machine.get_state("starting"))
 
-            assert not state_machine.can_trigger('reset', from_state=States.starting)
-            assert not state_machine.can_trigger('reset', from_state="starting")
-            assert not state_machine.can_trigger('reset', from_state=state_machine.get_state("starting"))
+            assert not state_machine.can_trigger_event('reset', from_state=States.starting)
+            assert not state_machine.can_trigger_event('reset', from_state="starting")
+            assert not state_machine.can_trigger_event('reset', from_state=state_machine.get_state("starting"))
 
         async def test_can_trigger_from_state(self, state_machine: statesman.StateMachine) -> None:
             assert state_machine.triggerable_events() == []
@@ -672,43 +715,40 @@ class TestProgrammaticStateMachine:
         async def test_by_name(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
             assert state_machine.state == States.starting
-            await state_machine.trigger('finish')
+            await state_machine.trigger_event('finish')
             assert state_machine.state == States.stopping
 
         async def test_by_event(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
             assert state_machine.state == States.starting
             event = state_machine.get_event('finish')
-            await state_machine.trigger(event)
+            await state_machine.trigger_event(event)
             assert state_machine.state == States.stopping
 
         async def test_trigger_without_state_raises(self, state_machine: statesman.StateMachine) -> None:
             assert state_machine.state is None
             with pytest.raises(RuntimeError, match='event trigger failed: the "finish" event does not support initial state transitions'):
-                await state_machine.trigger('finish')
+                await state_machine.trigger_event('finish')
 
         async def test_trigger_from_incompatible_state(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.stopping)
             with pytest.raises(RuntimeError, match='event trigger failed: the "finish" event cannot be triggered from the current state of "stopping"'):
-                await state_machine.trigger('finish')
+                await state_machine.trigger_event('finish')
 
         async def test_with_invalid_name(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
             with pytest.raises(LookupError, match="event trigger failed: no event was found with the name \"invalid\""):
-                await state_machine.trigger('invalid')
+                await state_machine.trigger_event('invalid')
 
         async def test_with_invalid_type(self, state_machine: statesman.StateMachine) -> None:
             await state_machine.enter_state(States.starting)
             with pytest.raises(TypeError, match="event trigger failed: cannot trigger an event of type \"int\": 1234"):
-                await state_machine.trigger(1234)
+                await state_machine.trigger_event(1234)
 
         class TestReturnTypes:
-            # bool, scalar, list, transition
             @pytest.fixture()
             def event(self, state_machine: statesman.StateMachine) -> statesman.Event:
                 event = state_machine.get_event('finish')
-                # def on_action() -> int:
-                #     return 31337
                 event.add_action(lambda: 31337, statesman.Action.Types.on)
                 event.add_action(lambda: 187, statesman.Action.Types.on)
                 event.add_action(lambda: 420, statesman.Action.Types.on)
@@ -716,39 +756,39 @@ class TestProgrammaticStateMachine:
 
             @pytest.mark.parametrize(('return_type', 'expected_return_value',),
                 [
-                    (statesman.Event.ReturnType.bool, True),
-                    (statesman.Event.ReturnType.scalar, 31337),
-                    (statesman.Event.ReturnType.tuple, (True, 31337)),
-                    (statesman.Event.ReturnType.list, [31337, 187, 420]),
+                    (bool, True),
+                    (object, 31337),
+                    (tuple, (True, 31337)),
+                    (list, [31337, 187, 420]),
                 ]
             )
             async def test_return_types(self, state_machine: statesman.StateMachine, event, return_type, expected_return_value) -> None:
                 await state_machine.enter_state(States.starting)
                 assert state_machine.state == States.starting
                 event.return_type = return_type
-                result = await state_machine.trigger('finish')
+                result = await state_machine.trigger_event('finish')
                 assert result == expected_return_value
 
             @pytest.mark.parametrize(('return_type', 'expected_return_value',),
                 [
-                    (statesman.Event.ReturnType.bool, True),
-                    (statesman.Event.ReturnType.scalar, 31337),
-                    (statesman.Event.ReturnType.tuple, (True, 31337)),
-                    (statesman.Event.ReturnType.list, [31337, 187, 420]),
+                    (bool, True),
+                    (object, 31337),
+                    (tuple, (True, 31337)),
+                    (list, [31337, 187, 420]),
                 ]
             )
             async def test_return_types_override_on_trigger(self, state_machine: statesman.StateMachine, event, return_type, expected_return_value) -> None:
                 await state_machine.enter_state(States.starting)
                 assert state_machine.state == States.starting
-                event.return_type = statesman.Event.ReturnType.transition
-                result = await state_machine.trigger('finish', return_type=return_type)
+                event.return_type = statesman.Transition
+                result = await state_machine.trigger_event('finish', return_type=return_type)
                 assert result == expected_return_value
 
             async def test_transition_return_type(self, state_machine: statesman.StateMachine, event) -> None:
                 await state_machine.enter_state(States.starting)
                 assert state_machine.state == States.starting
-                event.return_type = statesman.Event.ReturnType.transition
-                transition = await state_machine.trigger('finish')
+                event.return_type = statesman.Transition
+                transition = await state_machine.trigger_event('finish')
                 assert isinstance(transition, statesman.Transition)
                 assert transition.event == event
                 assert transition.succeeded == True
@@ -762,14 +802,14 @@ class TestProgrammaticStateMachine:
             )
             await state_machine.enter_state(States.starting)
             with pytest.raises(TypeError, match="event trigger failed: cannot trigger an event of type \"int\": 1234"):
-                await state_machine.trigger(1234)
+                await state_machine.trigger_event(1234)
 
         async def test_cancel_via_guard_state_machine_method(self, state_machine: statesman.StateMachine, mocker) -> None:
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
                 guard_mock.return_value = False
-                success = await state_machine.trigger('finish')
+                success = await state_machine.trigger_event('finish')
                 guard_mock.assert_awaited_once()
                 assert not success, 'should have been guarded'
 
@@ -778,7 +818,7 @@ class TestProgrammaticStateMachine:
             with extra(state_machine):
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
                 guard_mock.return_value = None
-                success = await state_machine.trigger('finish')
+                success = await state_machine.trigger_event('finish')
                 guard_mock.assert_awaited_once()
                 assert success, 'should not have been guarded'
 
@@ -788,7 +828,7 @@ class TestProgrammaticStateMachine:
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
                 guard_mock.return_value = "invalid"
                 with pytest.raises(ValueError, match="invalid return value from guard_transition: must return True, False, or None"):
-                    await state_machine.trigger('finish')
+                    await state_machine.trigger_event('finish')
                 guard_mock.assert_awaited_once()
 
         async def test_non_assertion_errors_raise(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -798,9 +838,37 @@ class TestProgrammaticStateMachine:
                 guard_mock.side_effect = RuntimeError(f'failed!')
 
                 with pytest.raises(RuntimeError, match='failed!'):
-                    success = await state_machine.trigger('finish')
+                    success = await state_machine.trigger_event('finish')
                     guard_mock.assert_awaited_once()
                     assert not success, 'should have been guarded'
+
+        async def test_guard_with_silence(self, state_machine: statesman.StateMachine, mocker) -> None:
+            state_machine.__config__.guard_with = statesman.Guard.silence
+            await state_machine.enter_state(States.starting)
+            with extra(state_machine):
+                guard_mock = mocker.patch.object(state_machine, 'guard_transition')
+                guard_mock.return_value = False
+                success = await state_machine.trigger_event('finish')
+                guard_mock.assert_awaited_once()
+                assert not success, 'should have been guarded'
+
+        async def test_guard_with_warning(self, state_machine: statesman.StateMachine, mocker) -> None:
+            state_machine.__config__.guard_with = statesman.Guard.warning
+            await state_machine.enter_state(States.starting)
+            with extra(state_machine):
+                guard_mock = mocker.patch.object(state_machine, 'guard_transition')
+                guard_mock.return_value = False
+                with pytest.warns(UserWarning, match='transition guard failure: guard_transition returned False'):
+                    await state_machine.trigger_event('finish')
+
+        async def test_guard_with_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
+            state_machine.__config__.guard_with = statesman.Guard.exception
+            await state_machine.enter_state(States.starting)
+            with extra(state_machine):
+                guard_mock = mocker.patch.object(state_machine, 'guard_transition')
+                guard_mock.return_value = False
+                with pytest.raises(RuntimeError, match="transition guard failure: guard_transition returned False"):
+                    await state_machine.trigger_event('finish')
 
         class TestActions:
             async def test_guard(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -809,7 +877,7 @@ class TestProgrammaticStateMachine:
                 guard_action = mocker.stub(name='action')
                 guard_action.return_value = True
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
-                assert await state_machine.trigger('finish'), 'guard passed'
+                assert await state_machine.trigger_event('finish'), 'guard passed'
                 guard_action.assert_called_once()
 
             async def test_cancel_via_guard_action_bool(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -820,7 +888,7 @@ class TestProgrammaticStateMachine:
 
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 # NOTE: The AssertionError is being caught and aborts the test
-                success = await state_machine.trigger('finish')
+                success = await state_machine.trigger_event('finish')
                 guard_action.assert_called_once()
                 assert not success, 'should have been cancelled by guard'
 
@@ -831,7 +899,7 @@ class TestProgrammaticStateMachine:
                 guard_action.return_value = None
 
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
-                success = await state_machine.trigger('finish')
+                success = await state_machine.trigger_event('finish')
                 guard_action.assert_called_once()
                 assert success, 'should not have been cancelled by guard'
 
@@ -843,7 +911,7 @@ class TestProgrammaticStateMachine:
 
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 with pytest.raises(ValueError, match="invalid return value from guard action: must return True, False, or None"):
-                    await state_machine.trigger('finish')
+                    await state_machine.trigger_event('finish')
                 guard_action.assert_called_once()
 
             async def test_cancel_via_guard_action_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -854,7 +922,7 @@ class TestProgrammaticStateMachine:
 
                 event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
                 # NOTE: The AssertionError is being caught and aborts the test
-                success = await state_machine.trigger('finish')
+                success = await state_machine.trigger_event('finish')
                 assert not success, 'cancelled by guard'
                 guard_action.assert_called_once()
 
@@ -867,16 +935,48 @@ class TestProgrammaticStateMachine:
                 guard_action2.return_value = True
                 event.add_action(lambda: guard_action1(), statesman.Action.Types.guard)
                 event.add_action(lambda: guard_action2(), statesman.Action.Types.guard)
-                assert not await state_machine.trigger('finish'), 'guard failed'
+                assert not await state_machine.trigger_event('finish'), 'guard failed'
                 guard_action1.assert_called_once()
                 guard_action2.assert_not_called()
+
+            async def test_guard_with_silence(self, state_machine: statesman.StateMachine, mocker) -> None:
+                state_machine.__config__.guard_with = statesman.Guard.silence
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action = mocker.stub(name='action')
+                guard_action.return_value = False
+
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
+                success = await state_machine.trigger_event('finish')
+
+            async def test_guard_with_warning(self, state_machine: statesman.StateMachine, mocker) -> None:
+                state_machine.__config__.guard_with = statesman.Guard.warning
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action = mocker.stub(name='action')
+                guard_action.return_value = False
+
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
+                with pytest.warns(UserWarning, match='transition guard failure: guard action returned False'):
+                    await state_machine.trigger_event('finish')
+
+            async def test_guard_with_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
+                state_machine.__config__.guard_with = statesman.Guard.exception
+                await state_machine.enter_state(States.starting)
+                event = state_machine.get_event('finish')
+                guard_action = mocker.stub(name='action')
+                guard_action.return_value = False
+
+                event.add_action(lambda: guard_action(), statesman.Action.Types.guard)
+                with pytest.raises(RuntimeError, match="transition guard failure: guard action returned False"):
+                    await state_machine.trigger_event('finish')
 
             async def test_before(self, state_machine: statesman.StateMachine, mocker) -> None:
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 before_action = mocker.stub(name='action')
                 event.add_action(lambda: before_action(), statesman.Action.Types.before)
-                await state_machine.trigger('finish')
+                await state_machine.trigger_event('finish')
                 before_action.assert_called_once()
 
             async def test_after(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -884,7 +984,7 @@ class TestProgrammaticStateMachine:
                 event = state_machine.get_event('finish')
                 after_action = mocker.stub(name='action')
                 event.add_action(lambda: after_action(), statesman.Action.Types.after)
-                await state_machine.trigger('finish')
+                await state_machine.trigger_event('finish')
                 after_action.assert_called_once()
 
             async def test_on(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -892,7 +992,7 @@ class TestProgrammaticStateMachine:
                 event = state_machine.get_event('finish')
                 on_action = mocker.stub(name='action')
                 event.add_action(lambda: on_action(), statesman.Action.Types.on)
-                await state_machine.trigger('finish')
+                await state_machine.trigger_event('finish')
                 on_action.assert_called_once()
 
             async def test_inheritable_actions(self, state_machine: statesman.StateMachine, mocker) -> None:
@@ -902,7 +1002,7 @@ class TestProgrammaticStateMachine:
                     on_transition = mocker.spy(state_machine, 'on_transition')
                     after_transition = mocker.spy(state_machine, 'after_transition')
                     await state_machine.enter_state(States.starting)
-                    await state_machine.trigger('finish')
+                    await state_machine.trigger_event('finish')
 
                     # From None -> Starting, Starting -> Stopped
                     guard_transition.assert_called()
@@ -1148,6 +1248,16 @@ class TestInitialState:
                 three = '3'
                 four = statesman.InitialState('4')
 
+@pytest.fixture(autouse=True)
+async def reset_config() -> None:
+    state_entry = statesman.StateMachine.__config__.state_entry
+    guard_with = statesman.StateMachine.__config__.guard_with
+    try:
+        yield
+    finally:
+        statesman.StateMachine.__config__.state_entry = state_entry
+        statesman.StateMachine.__config__.guard_with = guard_with
+
 
 @contextlib.contextmanager
 def extra(
@@ -1175,3 +1285,54 @@ async def test_matching_signature_overlapping_params() -> None:
     kwargs = {'transition': 'foo'}
 
     await statesman._call_with_matching_parameters(some_function, *args, **kwargs)
+
+class TestSequencer:
+    class StateMachine(statesman.SequencingMixin, statesman.StateMachine):
+        class States(statesman.StateEnum):
+            starting = 'Starting...'
+            running = 'Running...'
+            stopping = 'Stopping...'
+            stopped = statesman.InitialState('Terminated.')
+
+        name: Optional[str] = None
+        count: Optional[int] = None
+        another: Optional[str] = None
+        reason: Optional[str] = None
+
+        # _queue: asyncio.Queue = asyncio.Queue()
+
+        @statesman.event(States.stopped, States.starting)
+        async def start(self, name: str) -> None:
+            ...
+
+        @statesman.event(States.starting, States.running)
+        async def run(self, *, count: int, another: str) -> None:
+            ...
+
+        @statesman.event(States.running, States.stopping)
+        async def stop(self, *, reason: str = "Foo") -> None:
+            ...
+
+        @statesman.event(States.stopping, States.stopped)
+        async def terminate(self, *args, **kwargs) -> None:
+            ...
+
+    async def test_sequencing(self) -> None:
+        state_machine = await TestSequencer.StateMachine.create()
+        state_machine.sequence(
+            state_machine.start(name="Foo"),
+            state_machine.run(count=5, another="whatever"),
+            state_machine.trigger_event("stop"),
+            state_machine.terminate(),
+            state_machine.enter_state(States.starting),
+        )
+
+        expected_states = [States.starting, States.running, States.stopping, States.stopped, States.starting]
+        for expected_state in expected_states:
+            transition = await state_machine.next_state()
+            assert isinstance(transition, statesman.Transition)
+            assert transition.succeeded
+            assert state_machine.state == expected_state
+
+        result = await state_machine.next_state()
+        assert result is None
