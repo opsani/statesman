@@ -1299,8 +1299,6 @@ class TestSequencer:
         another: Optional[str] = None
         reason: Optional[str] = None
 
-        # _queue: asyncio.Queue = asyncio.Queue()
-
         @statesman.event(States.stopped, States.starting)
         async def start(self, name: str) -> None:
             ...
@@ -1329,10 +1327,10 @@ class TestSequencer:
 
         expected_states = [States.starting, States.running, States.stopping, States.stopped, States.starting]
         for expected_state in expected_states:
-            transition = await state_machine.next_state()
+            transition = await state_machine.next_transition()
             assert isinstance(transition, statesman.Transition)
             assert transition.succeeded
             assert state_machine.state == expected_state
 
-        result = await state_machine.next_state()
+        result = await state_machine.next_transition()
         assert result is None

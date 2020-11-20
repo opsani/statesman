@@ -1394,7 +1394,7 @@ class SequencingMixin(pydantic.BaseModel):
 
         The coroutines passed may be invocations of `enter_state`, `trigger_event`,
         or a decorated event function. The coroutines are awaited as they are dequeued
-        via calls to the `next_state` method.
+        via calls to the `next_transition` method.
 
         Raises:
             TypeError: Raised if a sequenced object is not a coroutine.
@@ -1409,7 +1409,7 @@ class SequencingMixin(pydantic.BaseModel):
 
             self._queue.append(coroutine)
 
-    async def next_state(self) -> Optional[Transition]:
+    async def next_transition(self) -> Optional[Transition]:
         """Advance to the next sequenced state and return the executed Transition or None if the queue is empty.
 
         The transition is executed by awaiting the coroutine.
