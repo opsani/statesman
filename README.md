@@ -109,7 +109,7 @@ async def _examples():
     await state_machine.enter_state(ProcessLifecycle.States.stopping)
 
     # Trigger an event
-    await state_machine.trigger("stop", key="value")
+    await state_machine.trigger_event("stop", key="value")
 ```
 
 States are defined as Python enum classes. The name of the enum item defines a
