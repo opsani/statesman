@@ -1387,7 +1387,7 @@ class HistoryMixin(pydantic.BaseModel):
 
 class SequencingMixin(pydantic.BaseModel):
     """A mixin that provides state transition sequencing functionality."""
-    __private_attributes__ = {'_queue': pydantic.PrivateAttr(default_factory=lambda: asyncio.Queue())}
+    __private_attributes__ = {'_queue': pydantic.PrivateAttr(collections.deque())}
 
     def sequence(self, *coroutines: List[Coroutine[Any, Any, Transition]]) -> None:
         """Sequence a series of coroutines that trigger state transitions.
@@ -1407,7 +1407,7 @@ class SequencingMixin(pydantic.BaseModel):
             locals_ = inspect.getcoroutinelocals(coroutine)
             locals_['kwargs']['return_type'] = Transition
 
-            self._queue.put_nowait(coroutine)
+            self._queue.append(coroutine)
 
     async def next_state(self) -> Optional[Transition]:
         """Advance to the next sequenced state and return the executed Transition or None if the queue is empty.
@@ -1417,11 +1417,10 @@ class SequencingMixin(pydantic.BaseModel):
         Raises:
             TypeError: Raised if the coroutine executed fails to return a Transition.
         """
-        import functools
-        if self._queue.empty():
+        if not self._queue:
             return None
 
-        coroutine = self._queue.get_nowait()
+        coroutine = self._queue.popleft()
         transition = await coroutine
         if not isinstance(transition, Transition):
             raise TypeError(f"expected return value of type {Transition.__qualname__} but found {transition.__class__.__name__}: {coroutine}")
