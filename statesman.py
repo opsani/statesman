@@ -771,7 +771,7 @@ class StateMachine(pydantic.BaseModel):
         return transition.results_as(return_type_ or bool)
 
     ##
-    # Actions
+    # Callbacks
 
     async def guard_transition(self, transition: 'Transition', *args, **kwargs) -> bool:
         """Guard the execution of every transition in the state machine.
