@@ -4,7 +4,6 @@ on:
     types: [published]
 jobs:
   release:
-    if: ${{ github.repository == 'opsani/statesman' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -24,7 +23,7 @@ jobs:
     - name: Install dependencies
       run: poetry install
     - name: Run pytest
-      run: poetry run pytest tests
+      run: poetry run pytest .
     - name: Build artifacts
       run: poetry build
     - name: Publish to PyPI
