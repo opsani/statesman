@@ -505,7 +505,7 @@ Guard callbacks and actions are handled differently from other behavioral hooks.
 Because guards can be used to cancel/reject an event, they are executed
 sequentially in the order that they were added to the state machine.
 
-Upon encountering a failing guard that has returned `False` or raise an
+Upon encountering a failing guard that has returned `False` or raised an
 exception of type `AssertionError`, the state machine consults the `guard_with`
 behavior configured on the `Config` class nested within the state machine class.
 
@@ -514,7 +514,7 @@ There are three behaviors available for configuration via `guard_with`:
 * `statesman.Guard.silence` (Default): The transition is aborted and an empty
     result set is returned.
 * `statesman.Guard.warning`: The transition is aborted, an empty result set is
-    returned, and warning is logged.
+    returned, and a warning is logged.
 * `statesman.Guard.exception`: The transition is aborted and a `RuntimeError` is
     raised.
 
