@@ -723,7 +723,7 @@ from typing import List
 import statesman
 
 
-class StateMachine(statesman.HistoryMixin, statesman.StateMachine):
+class StateMachine(statesman.SequencingMixin, statesman.StateMachine):
     class States(statesman.StateEnum):
         ready = statesman.InitialState("Ready")
         analyzing = "Analyzing"
