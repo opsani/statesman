@@ -9,6 +9,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Releases are
 versioned in accordance with [Semantic
 Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] "crimson meerkat" - 11/27/2020
+
+Patch release to expand package discovery metadata. No functional changes.
+
 ## [1.0.0] "crimson meerkat" - 11/27/2020
 
 Initial stable release of Statesman. Hear me and rejoice.

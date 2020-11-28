@@ -1,9 +1,12 @@
 [tool.poetry]
 name = "statesman"
-version = "1.0.0"
+version = "1.0.1"
 description = "A modern state machine library."
 authors = ["Blake Watters <blake@opsani.com>"]
 license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/opsani/statesman"
+repository = "https://github.com/opsani/statesman"
 
 [tool.poetry.dependencies]
 python = "^3.8"
