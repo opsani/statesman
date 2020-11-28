@@ -7,6 +7,8 @@
 [![GitHub release
 date](https://img.shields.io/github/release-date/opsani/statesman.svg)](https://github.com/opsani/statesman/releases)
 
+![Statesman Logo](./docs/statesman_logo.png)
+
 **The diplomatic path to building state machines in modern Python.**
 
 statesman is a library that provides an elegant and expressive API for
@@ -776,6 +778,10 @@ that have come before and support graphing/visualizations of statesman machines.
 
 It seems inevitable that hierarchical state machine support will eventually
 land.
+
+## Acknowledgements
+
+[Klemen Verdnik](https://github.com/chipxsd) contributed the statesman logo.
 
 ## License
 
