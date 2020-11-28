@@ -237,6 +237,26 @@ Each state machine instance has a `state` attribute that is the source of truth
 for the state machine. The state can be compared to `statesman.State` object
 instances or string values.
 
+```python
+import statesman
+
+
+class StateMachine(statesman.StateMachine):
+    class States(statesman.StateEnum):
+        starting = 'Starting...'
+        running = 'Running...'
+        stopping = 'Stopping...'
+        stopped = 'Terminated.'
+
+
+async def _example() -> None:
+    state_machine = StateMachine(state=StateMachine.States.stopping)
+    state_machine.state == StateMachine.States.stopping  # => True
+    state_machine.state == "stopping"  # => True
+    state_machine.state == StateMachine.States.running  # => False
+    state_machine.state == "stopped"  # => False
+```
+
 ### Entering States
 
 States can be directly entered via the `statesman.StateMachine.enter_state`
