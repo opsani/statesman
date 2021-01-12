@@ -251,7 +251,7 @@ flake8 = "*"
 
 [[package]]
 name = "flakehell"
-version = "0.7.0"
+version = "0.9.0"
 description = "Flake8 wrapper to make it nice and configurable"
 category = "dev"
 optional = false
@@ -643,7 +643,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "833f03d5ca3308898ad7a7a2d2e049ddb888c3bf0e4de04e3b61ca10ea7c972a"
+content-hash = "da34a00b50daac2b09d4d683cd80439ad87dcbed39a4d7d45c6a36ebd51a4541"
 
 [metadata.files]
 add-trailing-comma = [
@@ -771,8 +771,8 @@ flake8-quotes = [
     {file = "flake8-quotes-3.2.0.tar.gz", hash = "sha256:3f1116e985ef437c130431ac92f9b3155f8f652fda7405ac22ffdfd7a9d1055e"},
 ]
 flakehell = [
-    {file = "flakehell-0.7.0-py3-none-any.whl", hash = "sha256:4cc8963c082e5b60d62186874ab930c3374ce4c7bce9a5a59b971684a1c54dc2"},
-    {file = "flakehell-0.7.0.tar.gz", hash = "sha256:7d2e813e22d25e472677c4713695051686b4cb22e2d8690c7ad9107f6106f34c"},
+    {file = "flakehell-0.9.0-py3-none-any.whl", hash = "sha256:48a3a9b46136240e52b3b32a78a0826c45f6dcf7d980c30f758c1db5b1439c0b"},
+    {file = "flakehell-0.9.0.tar.gz", hash = "sha256:208836d8d24194d50cfa4c1fc99f681f3c537cc232edcd06455abc2971460893"},
 ]
 identify = [
     {file = "identify-1.5.10-py2.py3-none-any.whl", hash = "sha256:cc86e6a9a390879dcc2976cef169dd9cc48843ed70b7380f321d1b118163c60e"},
@@ -916,6 +916,8 @@ pyyaml = [
     {file = "PyYAML-5.3.1-cp37-cp37m-win_amd64.whl", hash = "sha256:73f099454b799e05e5ab51423c7bcf361c58d3206fa7b0d555426b1f4d9a3eaf"},
     {file = "PyYAML-5.3.1-cp38-cp38-win32.whl", hash = "sha256:06a0d7ba600ce0b2d2fe2e78453a470b5a6e000a985dd4a4e54e436cc36b0e97"},
     {file = "PyYAML-5.3.1-cp38-cp38-win_amd64.whl", hash = "sha256:95f71d2af0ff4227885f7a6605c37fd53d3a106fcab511b8860ecca9fcf400ee"},
+    {file = "PyYAML-5.3.1-cp39-cp39-win32.whl", hash = "sha256:ad9c67312c84def58f3c04504727ca879cb0013b2517c85a9a253f0cb6380c0a"},
+    {file = "PyYAML-5.3.1-cp39-cp39-win_amd64.whl", hash = "sha256:6034f55dab5fea9e53f436aa68fa3ace2634918e8b5994d82f3621c04ff5ed2e"},
     {file = "PyYAML-5.3.1.tar.gz", hash = "sha256:b8eac752c5e14d3eca0e6dd9199cd627518cb5ec06add0de9d32baeee6fe645d"},
 ]
 six = [
