@@ -251,7 +251,7 @@ flake8 = "*"
 
 [[package]]
 name = "flakehell"
-version = "0.7.0"
+version = "0.9.0"
 description = "Flake8 wrapper to make it nice and configurable"
 category = "dev"
 optional = false
@@ -642,7 +642,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "7ec97dea7f72899125b7868e19b7c8c205b302cba94350b2bb563f1b5d0746ff"
+content-hash = "41295a2cece0efb3a8f90d4c6e31f312f7744b612981e9a5b94229bfc2e23e73"
 
 [metadata.files]
 add-trailing-comma = [
@@ -770,8 +770,8 @@ flake8-quotes = [
     {file = "flake8-quotes-3.2.0.tar.gz", hash = "sha256:3f1116e985ef437c130431ac92f9b3155f8f652fda7405ac22ffdfd7a9d1055e"},
 ]
 flakehell = [
-    {file = "flakehell-0.7.0-py3-none-any.whl", hash = "sha256:4cc8963c082e5b60d62186874ab930c3374ce4c7bce9a5a59b971684a1c54dc2"},
-    {file = "flakehell-0.7.0.tar.gz", hash = "sha256:7d2e813e22d25e472677c4713695051686b4cb22e2d8690c7ad9107f6106f34c"},
+    {file = "flakehell-0.9.0-py3-none-any.whl", hash = "sha256:48a3a9b46136240e52b3b32a78a0826c45f6dcf7d980c30f758c1db5b1439c0b"},
+    {file = "flakehell-0.9.0.tar.gz", hash = "sha256:208836d8d24194d50cfa4c1fc99f681f3c537cc232edcd06455abc2971460893"},
 ]
 identify = [
     {file = "identify-1.5.10-py2.py3-none-any.whl", hash = "sha256:cc86e6a9a390879dcc2976cef169dd9cc48843ed70b7380f321d1b118163c60e"},
