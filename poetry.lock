@@ -1,6 +1,6 @@
 [[package]]
 name = "add-trailing-comma"
-version = "2.0.1"
+version = "2.1.0"
 description = "Automatically add trailing commas to calls and literals"
 category = "dev"
 optional = false
@@ -642,12 +642,12 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "7ec97dea7f72899125b7868e19b7c8c205b302cba94350b2bb563f1b5d0746ff"
+content-hash = "cc79230fc825df3416762ed1108015b61ab2c5ab1499338b4cefe786d684fbdd"
 
 [metadata.files]
 add-trailing-comma = [
-    {file = "add_trailing_comma-2.0.1-py2.py3-none-any.whl", hash = "sha256:34e090e00d9f93992fd09ffdc7cd8cdddcdb03f950efa5b60166209c98789801"},
-    {file = "add_trailing_comma-2.0.1.tar.gz", hash = "sha256:7b8e63fe870045646b80e97cc79988cae8a820de0bdbdf4032c554e451ea18d0"},
+    {file = "add_trailing_comma-2.1.0-py2.py3-none-any.whl", hash = "sha256:f462403aa2e997e20855708edb57536d1d3310d5c5fac7e80542578eb47fdb10"},
+    {file = "add_trailing_comma-2.1.0.tar.gz", hash = "sha256:f9864ffbc12ea4e54916a356d57341ab58f612867c2ad453339c51004807e8ce"},
 ]
 appdirs = [
     {file = "appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128"},
