@@ -289,7 +289,7 @@ class Event(BaseModel):
     sources: List[Union[None, State]]
     target: State
     transition_type: Optional['Transition.Types']
-    return_type: Type['Result'] = bool
+    return_type: Type['Result'] = pydantic.Field(default=bool)
 
     @property
     def actions(self) -> List[Action]:
@@ -1091,7 +1091,7 @@ class EventDescriptor(pydantic.BaseModel):
     """Describes an Event within a state machine."""
     description: Optional[str] = None
     transition_type: Optional[Transition.Types] = None
-    return_type: Type[Result] = list
+    return_type: Type[Result] = pydantic.Field(default=list)
     source: List[Union[None, StateIdentifier]]
     target: Target
     guard: List[Callable]
@@ -1191,7 +1191,7 @@ def event(
         )
 
         @functools.wraps(fn)
-        async def event_trigger(self, *args, **kwargs) -> Any:
+        async def event_trigger(self: StateMachine, *args, **kwargs) -> Any:
             # NOTE: The original function is attached as an on event handler
             return await self.trigger_event(fn.__name__, *args, **kwargs)
 
