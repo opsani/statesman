@@ -9,6 +9,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Releases are
 versioned in accordance with [Semantic
 Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] "crimson meerkat" - 11/23/2021
+
+### Changed
+
+- Default python version set to 3.9.9
+
+### Fixed
+
+- Bug where pydantic model Event.return_type default value (bool) was overriding initialization argument
+
 ## [1.0.1] "crimson meerkat" - 11/27/2020
 
 Patch release to expand package discovery metadata. No functional changes.
