@@ -14,7 +14,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Default python version set to 3.9.9
-- (post1) Relax python version requirements to allow installation on versions as low as 3.6
+- (post1) Relax python version requirements to allow installation on versions as low as 3.7
 
 ### Fixed
 
