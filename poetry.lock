@@ -233,11 +233,11 @@ python-versions = ">=3.6,<4.0"
 
 [[package]]
 name = "flake8-pytest-style"
-version = "1.4.2"
+version = "1.6.0"
 description = "A flake8 plugin checking common style issues or inconsistencies with pytest-based tests."
 category = "dev"
 optional = false
-python-versions = ">=3.6,<4.0"
+python-versions = ">=3.6.2,<4.0.0"
 
 [package.dependencies]
 flake8-plugin-utils = ">=1.3.2,<2.0.0"
@@ -706,8 +706,8 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 
 [metadata]
 lock-version = "1.1"
-python-versions = ">=3.7,<=3.9.7"
-content-hash = "93cbda4896eee6f51dd5534a57e64c65815fec5a72481a7e61e35f450237f8a6"
+python-versions = ">=3.7,<3.10"
+content-hash = "17e0c7a51cb60ee4d78e74d31197dffbcb21ce68023fe609170994693a442638"
 
 [metadata.files]
 add-trailing-comma = [
@@ -842,8 +842,8 @@ flake8-plugin-utils = [
     {file = "flake8_plugin_utils-1.3.2-py3-none-any.whl", hash = "sha256:1fe43e3e9acf3a7c0f6b88f5338cad37044d2f156c43cb6b080b5f9da8a76f06"},
 ]
 flake8-pytest-style = [
-    {file = "flake8-pytest-style-1.4.2.tar.gz", hash = "sha256:33a2f24c65a5cbd68c501459a5c49b81f4a5e506e3e53afef968942f8e45a2f9"},
-    {file = "flake8_pytest_style-1.4.2-py3-none-any.whl", hash = "sha256:c2d11f3964928a8bf8d160c66b28a3c92209f4cde286338adac9ccdf9a3fcbb3"},
+    {file = "flake8-pytest-style-1.6.0.tar.gz", hash = "sha256:c1175713e9e11b78cd1a035ed0bca0d1e41d09c4af329a952750b61d4194ddac"},
+    {file = "flake8_pytest_style-1.6.0-py3-none-any.whl", hash = "sha256:5fedb371a950e9fe0e0e6bfc854be7d99151271208f34cd2cc517681ece27780"},
 ]
 flake8-quotes = [
     {file = "flake8-quotes-3.2.0.tar.gz", hash = "sha256:3f1116e985ef437c130431ac92f9b3155f8f652fda7405ac22ffdfd7a9d1055e"},
