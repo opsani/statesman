@@ -14,7 +14,7 @@ pydantic = "^1.7.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
-pytest-asyncio = "^0.14.0"
+pytest-asyncio = "^0.18.1"
 devtools = "^0.6.1"
 pytest-mock = "^3.6.1"
 isort = "^5.8.0"
