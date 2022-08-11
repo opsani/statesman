@@ -20,7 +20,7 @@ jobs:
         pip install poetry==1.1.*
         poetry config virtualenvs.in-project true
     - name: Set up cache
-      uses: actions/cache@v2.1.5
+      uses: actions/cache@v3.0.7
       with:
         path: .venv
         key: venv-${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
