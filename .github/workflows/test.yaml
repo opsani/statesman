@@ -6,7 +6,7 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3.1.0
     - name: Output Python version
       id: python-version
       run: |
