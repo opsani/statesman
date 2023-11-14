@@ -356,6 +356,9 @@ class Guard(str, enum.Enum):
     warning = "warning"
     exception = "exception"
 
+class StateMachineConfig:
+    state_entry = Entry.allow
+    guard_with = Guard.silence
 
 class StateMachine(pydantic.BaseModel):
     """StateMachine objects model state machines comprised of states, events,
@@ -378,6 +381,7 @@ class StateMachine(pydantic.BaseModel):
     _state: Optional[State] = pydantic.PrivateAttr(None)
     _states: List[State] = pydantic.PrivateAttr([])
     _events: List[Event] = pydantic.PrivateAttr([])
+    _config: StateMachineConfig = pydantic.PrivateAttr(StateMachineConfig())
 
     def __init__(
         self,
@@ -736,7 +740,7 @@ class StateMachine(pydantic.BaseModel):
             LookupError: Raised if the state cannot be found by name or enum value.
             TypeError: Raised if the state value given is not a State, StateEnum, or str object.
         """
-        state_entry = self.__config__.state_entry
+        state_entry = self._config.state_entry
         if state_entry == Entry.allow:
             pass
         elif state_entry == Entry.initial:
@@ -833,10 +837,6 @@ class StateMachine(pydantic.BaseModel):
     def __repr_args__(self) -> pydantic.ReprArgs:
         return [('states', self.states), ('events', self.events), ('state', self.state)]
 
-    class Config:
-        state_entry = Entry.allow
-        guard_with = Guard.silence
-
 
 # The types that transition results can be represented as.
 Result = TypeVar('Result', bool, object, tuple, list, 'Transition')
@@ -924,7 +924,7 @@ class Transition(pydantic.BaseModel):
             # Guards can cancel the transition via return value or failed assertion
             self.cancelled = False
             self.succeeded = False
-            guard_with = self.state_machine.__config__.guard_with
+            guard_with = self.state_machine._config.guard_with
             try:
                 result = await _call_with_matching_parameters(self.state_machine.guard_transition, self, *args, **kwargs)
                 if result not in (True, False, None):
@@ -1483,9 +1483,9 @@ def _state_entry(
 ) -> Iterator[StateMachine]:
     """Temporarily override the value of the `entry` setting on a StateMachine object.
     """
-    original = obj.__config__.state_entry
-    obj.__config__.state_entry = entry
+    original = obj._config.state_entry
+    obj._config.state_entry = entry
     try:
         yield obj
     finally:
-        obj.__config__.state_entry = original
+        obj._config.state_entry = original

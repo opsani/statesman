@@ -571,7 +571,7 @@ class TestProgrammaticStateMachine:
         @pytest.mark.asyncio
         async def test_allow(self) -> None:
             state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
-            state_machine.__config__.state_entry = statesman.Entry.allow
+            state_machine._config.state_entry = statesman.Entry.allow
             assert state_machine.state is None
             assert await state_machine.enter_state(States.starting)
             assert state_machine.state == States.starting
@@ -584,7 +584,7 @@ class TestProgrammaticStateMachine:
         async def test_initial(self) -> None:
             # Enter once for initial, then raise on next try
             state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
-            state_machine.__config__.state_entry = statesman.Entry.initial
+            state_machine._config.state_entry = statesman.Entry.initial
             assert state_machine.state is None
             assert await state_machine.enter_state(States.starting)
             assert state_machine.state == States.starting
@@ -596,7 +596,7 @@ class TestProgrammaticStateMachine:
         async def test_ignore(self) -> None:
             # Return false every time
             state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
-            state_machine.__config__.state_entry = statesman.Entry.ignore
+            state_machine._config.state_entry = statesman.Entry.ignore
             assert state_machine.state is None
             assert not await state_machine.enter_state(States.starting)
             assert state_machine.state is None
@@ -608,7 +608,7 @@ class TestProgrammaticStateMachine:
         @pytest.mark.asyncio
         async def test_forbid(self) -> None:
             state_machine = statesman.StateMachine(states=statesman.State.from_enum(States))
-            state_machine.__config__.state_entry = statesman.Entry.forbid
+            state_machine._config.state_entry = statesman.Entry.forbid
             assert state_machine.state is None
             with pytest.raises(RuntimeError, match="state entry failed: use of the `enter_state` method is forbidden"):
                 assert await state_machine.enter_state(States.starting)
@@ -893,7 +893,7 @@ class TestProgrammaticStateMachine:
 
         @pytest.mark.asyncio
         async def test_guard_with_silence(self, state_machine: statesman.StateMachine, mocker) -> None:
-            state_machine.__config__.guard_with = statesman.Guard.silence
+            state_machine._config.guard_with = statesman.Guard.silence
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
@@ -904,7 +904,7 @@ class TestProgrammaticStateMachine:
 
         @pytest.mark.asyncio
         async def test_guard_with_warning(self, state_machine: statesman.StateMachine, mocker) -> None:
-            state_machine.__config__.guard_with = statesman.Guard.warning
+            state_machine._config.guard_with = statesman.Guard.warning
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
@@ -914,7 +914,7 @@ class TestProgrammaticStateMachine:
 
         @pytest.mark.asyncio
         async def test_guard_with_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
-            state_machine.__config__.guard_with = statesman.Guard.exception
+            state_machine._config.guard_with = statesman.Guard.exception
             await state_machine.enter_state(States.starting)
             with extra(state_machine):
                 guard_mock = mocker.patch.object(state_machine, 'guard_transition')
@@ -999,7 +999,7 @@ class TestProgrammaticStateMachine:
 
             @pytest.mark.asyncio
             async def test_guard_with_silence(self, state_machine: statesman.StateMachine, mocker) -> None:
-                state_machine.__config__.guard_with = statesman.Guard.silence
+                state_machine._config.guard_with = statesman.Guard.silence
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
@@ -1010,7 +1010,7 @@ class TestProgrammaticStateMachine:
 
             @pytest.mark.asyncio
             async def test_guard_with_warning(self, state_machine: statesman.StateMachine, mocker) -> None:
-                state_machine.__config__.guard_with = statesman.Guard.warning
+                state_machine._config.guard_with = statesman.Guard.warning
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
@@ -1022,7 +1022,7 @@ class TestProgrammaticStateMachine:
 
             @pytest.mark.asyncio
             async def test_guard_with_exception(self, state_machine: statesman.StateMachine, mocker) -> None:
-                state_machine.__config__.guard_with = statesman.Guard.exception
+                state_machine._config.guard_with = statesman.Guard.exception
                 await state_machine.enter_state(States.starting)
                 event = state_machine.get_event('finish')
                 guard_action = mocker.stub(name='action')
@@ -1319,16 +1319,6 @@ class TestInitialState:
                 two = '2'
                 three = '3'
                 four = statesman.InitialState('4')
-
-@pytest.fixture(autouse=True)
-async def reset_config() -> None:
-    state_entry = statesman.StateMachine.__config__.state_entry
-    guard_with = statesman.StateMachine.__config__.guard_with
-    try:
-        yield
-    finally:
-        statesman.StateMachine.__config__.state_entry = state_entry
-        statesman.StateMachine.__config__.guard_with = guard_with
 
 
 @contextlib.contextmanager
