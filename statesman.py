@@ -658,7 +658,7 @@ class StateMachine(pydantic.BaseModel):
         if isinstance(event, Event):
             event_ = event
             if event_ not in self._events:
-                raise ValueError(f'event trigger failed: the event object given is not in the state machine')
+                raise ValueError('event trigger failed: the event object given is not in the state machine')
 
         elif isinstance(event, str):
             event_ = self.get_event(event)
@@ -741,18 +741,18 @@ class StateMachine(pydantic.BaseModel):
             pass
         elif state_entry == Entry.initial:
             if self.state is not None:
-                raise RuntimeError(f"state entry failed: `enter_state` is only available to set initial state")
+                raise RuntimeError("state entry failed: `enter_state` is only available to set initial state")
         elif state_entry == Entry.ignore:
             return False
         elif state_entry == Entry.forbid:
-            raise RuntimeError(f"state entry failed: use of the `enter_state` method is forbidden")
+            raise RuntimeError("state entry failed: use of the `enter_state` method is forbidden")
         else:
             raise ValueError(f"unknown Entry value: {state_entry}")
 
         if isinstance(state, State):
             state_ = state
             if state_ not in self._states:
-                raise ValueError(f'state entry failed: the state object given is not in the state machine')
+                raise ValueError('state entry failed: the state object given is not in the state machine')
         elif isinstance(state, (StateEnum, str)):
             name = state.name if isinstance(state, StateEnum) else state
             state_ = self.get_state(name)
@@ -939,7 +939,7 @@ class Transition(pydantic.BaseModel):
                 elif guard_with == Guard.warning:
                     warnings.warn('transition guard failure: guard_transition returned False')
                 elif guard_with == Guard.exception:
-                    raise RuntimeError(f"transition guard failure: guard_transition returned False") from error
+                    raise RuntimeError("transition guard failure: guard_transition returned False") from error
                 else:
                     raise ValueError(f"unknown Guard value: {guard_with}")
 
@@ -958,7 +958,7 @@ class Transition(pydantic.BaseModel):
                     else True
                 )
                 if not success:
-                    raise AssertionError(f'transition cancelled by guard action')
+                    raise AssertionError('transition cancelled by guard action')
             except AssertionError as error:
                 self.cancelled = True
 
@@ -967,7 +967,7 @@ class Transition(pydantic.BaseModel):
                 elif guard_with == Guard.warning:
                     warnings.warn('transition guard failure: guard action returned False')
                 elif guard_with == Guard.exception:
-                    raise RuntimeError(f"transition guard failure: guard action returned False") from error
+                    raise RuntimeError("transition guard failure: guard action returned False") from error
                 else:
                     raise ValueError(f"unknown Guard value: {guard_with}")
 
