@@ -170,7 +170,7 @@ class BaseModel(pydantic.BaseModel):
             for action in self._get_actions(type_):
                 result = await action(*args, **kwargs)
                 results.append(result)
-                if result == False:
+                if result is False:
                     break
 
             return results
