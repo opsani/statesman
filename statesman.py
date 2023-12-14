@@ -1,7 +1,7 @@
 """Statesman is a modern state machine library."""
 from __future__ import annotations
 
-import asyncio
+import anyio
 import collections
 import contextlib
 import datetime
@@ -163,17 +163,22 @@ class BaseModel(pydantic.BaseModel):
         return list(filter(lambda c: c.type == type_, self._actions))
 
     async def _run_actions(self, type_: Action.Types, *args, concurrently: bool = True, **kwargs) -> List[Any]:
+        results = []
         if concurrently:
-            return await asyncio.gather(*(action(*args, **kwargs) for action in self._get_actions(type_)))
+            async with anyio.create_task_group() as tg:
+                async def _run(n,p):
+                    results[n] = await p(*args, **kwargs)
+                for i,action in enumerate(self._get_actions(type_)):
+                    results.append(None)
+                    tg.start_soon(_run,i,action)
         else:
-            results = []
             for action in self._get_actions(type_):
                 result = await action(*args, **kwargs)
                 results.append(result)
                 if result is False:
                     break
 
-            return results
+        return results
 
 
 class State(BaseModel):

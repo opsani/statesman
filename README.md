@@ -153,7 +153,7 @@ Our design goals were roughly:
 
 * Utilize type hints extensively as both a documentation and design by contract
     tool to provide an expressive, readable API.
-* Embrace asyncio as a first class citizen.
+* Embrace anyio/asyncio/trio as a first class citizen.
 * Implement state machines as plain old Python objects with an easily understood
     method and input/output external API surface. Callers shouldn't need to know
     or care about FSM minutiae.
