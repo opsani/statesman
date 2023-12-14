@@ -119,10 +119,10 @@ class Action(pydantic.BaseModel):
         """Call the action with the matching parameters and return the
         result."""
         matched_args, matched_kwargs = _parameters_matching_signature(self.signature, *args, **kwargs)
-        if asyncio.iscoroutinefunction(self.callable):
-            return await self.callable(*matched_args, **matched_kwargs)
-        else:
-            return self.callable(*matched_args, **matched_kwargs)
+        result = self.callable(*matched_args, **matched_kwargs)
+        if inspect.iscoroutine(result):
+            result = await result
+        return result
 
     class Config:
         arbitrary_types_allowed = True
@@ -1359,10 +1359,10 @@ async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) ->
     matched_args, matched_kwargs = _parameters_matching_signature(
         inspect.Signature.from_callable(callable), *args, **kwargs
     )
-    if asyncio.iscoroutinefunction(callable):
-        return await callable(*matched_args, **matched_kwargs)
-    else:
-        return callable(*matched_args, **matched_kwargs)
+    result = callable(*matched_args, **matched_kwargs)
+    if inspect.iscoroutine(result):
+        result = await result
+    return result
 
 
 class HistoryMixin(pydantic.BaseModel):
