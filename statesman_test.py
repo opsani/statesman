@@ -87,7 +87,7 @@ class TestState:
         assert state.actions == [action]
 
     def test_add_action_invalid_type(self, state: statesman.State) -> None:
-        with pytest.raises(ValueError, match='cannot add state action with type "Types.after": must be "Types.entry" or "Types.exit"'):
+        with pytest.raises(ValueError, match='cannot add state action with type "(Types\.)?after": must be "(Types\.)?entry" or "(Types\.)?exit"'):
             state.add_action(lambda: 1234, statesman.Action.Types.after)
 
     @pytest.mark.parametrize(
