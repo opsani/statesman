@@ -122,7 +122,7 @@ class TestAction:
         assert e.value.errors()[0]['loc'] == ('callable',)
         assert (
             e.value.errors()[0]['msg']
-            == 'field required'
+            == 'Field required'
         )
 
     def test_signature_is_hydrated(self) -> None:
@@ -1331,12 +1331,15 @@ def extra(
     Used in tests to support object mocking/spying that relies on
     setattr to inject mocks.
     """
-    original = obj.__config__.extra
-    obj.__config__.extra = extra
+    original = obj.model_config.get('extra', None)
+    obj.model_config['extra'] = extra
     try:
         yield obj
     finally:
-        obj.__config__.extra = original
+        if original is not None:
+            obj.model_config['extra'] = original
+        else:
+            obj.model_config.pop('extra')
 
 
 @pytest.mark.asyncio

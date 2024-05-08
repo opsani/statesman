@@ -206,9 +206,9 @@ class State(BaseModel):
         a future point in time."""
         return State(name='__active__', description='The active state at transition time.')
 
-    @pydantic.validator('name', 'description', pre=True)
+    @pydantic.field_validator('name', 'description', mode='before')
     @classmethod
-    def _value_from_base_states(cls, value: Union[str, StateEnum], field) -> str:
+    def _value_from_base_states(cls, value: Union[str, StateEnum], info: pydantic.ValidationInfo) -> str:
         """Extract the appropriate value for the model field from a States
         enumeration value.
 
@@ -217,9 +217,9 @@ class State(BaseModel):
         name and the value populates the description.
         """
         if isinstance(value, StateEnum):
-            if field.name == 'name':
+            if info.field_name == 'name':
                 return value.name
-            elif field.name == 'description':
+            elif info.field_name == 'description':
                 return value.value
 
         return value
@@ -288,7 +288,7 @@ class Event(BaseModel):
     description: Optional[str] = None
     sources: List[Union[None, State]]
     target: State
-    transition_type: Optional['Transition.Types']
+    transition_type: Optional['Transition.Types'] = None
     return_type: Type['Result'] = pydantic.Field(default=bool)
 
     @property
@@ -1011,7 +1011,7 @@ class Transition(pydantic.BaseModel):
 
         return values
 
-    @pydantic.root_validator()
+    @pydantic.root_validator(skip_on_failure=True)
     @classmethod
     def _validate_type(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         type_ = values['type']
@@ -1387,7 +1387,7 @@ class HistoryMixin(pydantic.BaseModel):
 
 class SequencingMixin(pydantic.BaseModel):
     """A mixin that provides state transition sequencing functionality."""
-    __private_attributes__ = {'_queue': pydantic.PrivateAttr(collections.deque())}
+    _queue = pydantic.PrivateAttr(default_factory=collections.deque)
 
     def sequence(self, *coroutines: List[Coroutine[Any, Any, Transition]]) -> None:
         """Sequence a series of coroutines that trigger state transitions.
