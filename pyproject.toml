@@ -14,7 +14,7 @@ pydantic = "^2.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.2.0"
-pytest-asyncio = "^0.20.0"
+anyio = "^4.1.0"
 devtools = "^0.6.1"
 pytest-mock = "^3.10.0"
 isort = "^5.8.0"
@@ -38,6 +38,7 @@ add-trailing-comma = "^2.1.0"
 pyformat = "^0.7"
 pylint = "^2.6.0"
 flake8-quotes = "^3.2.0"
+trio = "^0.23.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

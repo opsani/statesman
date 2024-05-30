@@ -1,7 +1,7 @@
 """Statesman is a modern state machine library."""
 from __future__ import annotations
 
-import asyncio
+import anyio
 import collections
 import contextlib
 import datetime
@@ -119,10 +119,10 @@ class Action(pydantic.BaseModel):
         """Call the action with the matching parameters and return the
         result."""
         matched_args, matched_kwargs = _parameters_matching_signature(self.signature, *args, **kwargs)
-        if asyncio.iscoroutinefunction(self.callable):
-            return await self.callable(*matched_args, **matched_kwargs)
-        else:
-            return self.callable(*matched_args, **matched_kwargs)
+        result = self.callable(*matched_args, **matched_kwargs)
+        if inspect.iscoroutine(result):
+            result = await result
+        return result
 
     class Config:
         arbitrary_types_allowed = True
@@ -163,17 +163,22 @@ class BaseModel(pydantic.BaseModel):
         return list(filter(lambda c: c.type == type_, self._actions))
 
     async def _run_actions(self, type_: Action.Types, *args, concurrently: bool = True, **kwargs) -> List[Any]:
+        results = []
         if concurrently:
-            return await asyncio.gather(*(action(*args, **kwargs) for action in self._get_actions(type_)))
+            async with anyio.create_task_group() as tg:
+                async def _run(n,p):
+                    results[n] = await p(*args, **kwargs)
+                for i,action in enumerate(self._get_actions(type_)):
+                    results.append(None)
+                    tg.start_soon(_run,i,action)
         else:
-            results = []
             for action in self._get_actions(type_):
                 result = await action(*args, **kwargs)
                 results.append(result)
-                if result == False:
+                if result is False:
                     break
 
-            return results
+        return results
 
 
 class State(BaseModel):
@@ -1359,10 +1364,10 @@ async def _call_with_matching_parameters(callable: Callable, *args, **kwargs) ->
     matched_args, matched_kwargs = _parameters_matching_signature(
         inspect.Signature.from_callable(callable), *args, **kwargs
     )
-    if asyncio.iscoroutinefunction(callable):
-        return await callable(*matched_args, **matched_kwargs)
-    else:
-        return callable(*matched_args, **matched_kwargs)
+    result = callable(*matched_args, **matched_kwargs)
+    if inspect.iscoroutine(result):
+        result = await result
+    return result
 
 
 class HistoryMixin(pydantic.BaseModel):
